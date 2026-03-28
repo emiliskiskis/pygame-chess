@@ -26,14 +26,6 @@ MODE_PVP = "pvp"
 MODE_AI = "ai"
 MODE_LEARNING = "learning"
 
-PIECE_TIPS = {
-    "pawn": "Pawns move forward 1 square (2 from start) and capture diagonally.",
-    "knight": "Knights move in an L-shape and can jump over pieces.",
-    "bishop": "Bishops slide diagonally any number of squares.",
-    "rook": "Rooks slide horizontally or vertically any number of squares.",
-    "queen": "Queens combine rook and bishop - the most powerful piece.",
-    "king": "Kings move 1 square in any direction. Protect yours!",
-}
 
 PIECE_SYMBOLS = {
     "white_king": "♔",

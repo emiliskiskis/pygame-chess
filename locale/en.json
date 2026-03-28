@@ -1,0 +1,54 @@
+{
+  "_locale": "en",
+  "_language": "English",
+
+  "window_title": "Chess",
+
+  "menu_title": "Chess",
+  "menu_subtitle": "Choose a game mode",
+  "menu_hint": "F11 fullscreen   |   Arrow keys + Space: cursor   |   Type notation in bar below board",
+
+  "menu_pvp_label": "Player vs Player",
+  "menu_pvp_desc": "Two humans play on the same computer",
+  "menu_ai_label": "Player vs AI",
+  "menu_ai_desc": "Play against the computer (black)",
+  "menu_learning_label": "Learning Mode",
+  "menu_learning_desc": "Hints, tips and move explanations",
+
+  "badge_pvp": "PvP",
+  "badge_ai": "vs AI",
+  "badge_learning": "Learning",
+
+  "panel_header": "Moves",
+  "panel_col_number": "#",
+  "panel_col_white": "White",
+  "panel_col_black": "Black",
+
+  "notation_label": "Move: ",
+  "notation_hint": "Enter to submit  |  Esc clears",
+
+  "pause_title": "Paused",
+  "pause_resume": "Resume",
+  "pause_restart": "Restart",
+  "pause_menu": "Main Menu",
+  "pause_fullscreen": "Toggle Fullscreen",
+  "pause_quit": "Quit",
+  "pause_esc_hint": "Escape to resume",
+
+  "over_play_again": "Play Again",
+  "over_menu": "Main Menu",
+  "over_quit": "Quit",
+
+  "status_turn": "{player}'s turn",
+  "status_check": "{player} is in check!",
+  "status_checkmate": "Checkmate! {winner} wins!",
+  "status_stalemate": "Stalemate! It's a draw.",
+  "status_white_turn": "White's turn",
+
+  "tip_pawn":   "Pawns move forward 1 square (2 from start) and capture diagonally.",
+  "tip_knight": "Knights move in an L-shape and can jump over pieces.",
+  "tip_bishop": "Bishops slide diagonally any number of squares.",
+  "tip_rook":   "Rooks slide horizontally or vertically any number of squares.",
+  "tip_queen":  "Queens combine rook and bishop - the most powerful piece.",
+  "tip_king":   "Kings move 1 square in any direction. Protect yours!"
+}

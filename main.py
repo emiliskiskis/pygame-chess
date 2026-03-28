@@ -16,10 +16,15 @@ import pygame
 
 from constants import (
     ASSET_DIR,
-    PIECE_TIPS,
     MODE_MENU,
     MODE_AI,
     MODE_LEARNING,
+)
+from strings import (
+    WINDOW_TITLE,
+    BADGE_PVP, BADGE_AI, BADGE_LEARNING,
+    STATUS_WHITE_TURN,
+    TIPS,
 )
 from layout import Layout
 from pieces import load_pieces, reload_pieces
@@ -58,7 +63,7 @@ def main():
 
     INIT_W, INIT_H = 960, 780
     screen = pygame.display.set_mode((INIT_W, INIT_H), pygame.RESIZABLE)
-    pygame.display.set_caption("Chess")
+    pygame.display.set_caption(WINDOW_TITLE)
     clock = pygame.time.Clock()
 
     fullscreen = False
@@ -108,7 +113,7 @@ def main():
             "white": {"kingside": True, "queenside": True},
             "black": {"kingside": True, "queenside": True},
         }
-        status_msg = "White's turn"
+        status_msg = STATUS_WHITE_TURN
         game_over = False
         move_history = []
         flipped = False
@@ -192,9 +197,6 @@ def main():
             if event.type == pygame.VIDEORESIZE:
                 w = max(event.w, 400)
                 h = max(event.h, 400)
-                # Update the window surface immediately so it doesn't look blank,
-                # but only re-layout after the quiet period.
-                screen = pygame.display.set_mode((w, h), pygame.RESIZABLE)
                 pending_size = (w, h)
                 resize_timer = now + RESIZE_DELAY
                 continue  # skip all other processing this frame
@@ -327,7 +329,7 @@ def main():
                     nc = max(0, min(7, cursor[1] + dc))
                     cursor = (nr, nc)
                     if mode == MODE_LEARNING and board[nr][nc]:
-                        tip_text = PIECE_TIPS.get(piece_type(board[nr][nc]), "")
+                        tip_text = TIPS.get(piece_type(board[nr][nc]), "")
                     else:
                         tip_text = ""
                     continue
@@ -345,7 +347,7 @@ def main():
                                 board, r, c, last_move, castling_rights
                             )
                             if mode == MODE_LEARNING:
-                                tip_text = PIECE_TIPS.get(piece_type(clicked), "")
+                                tip_text = TIPS.get(piece_type(clicked), "")
                         else:
                             selected = None
                             possible_moves = []
@@ -356,7 +358,7 @@ def main():
                                 board, r, c, last_move, castling_rights
                             )
                             if mode == MODE_LEARNING:
-                                tip_text = PIECE_TIPS.get(piece_type(clicked), "")
+                                tip_text = TIPS.get(piece_type(clicked), "")
 
             # ── Mouse ─────────────────────────────────────────────────────
             if not block:
@@ -380,7 +382,7 @@ def main():
                             drag_from = cell
                             drag_pos = (mx, my)
                             if mode == MODE_LEARNING:
-                                tip_text = PIECE_TIPS.get(piece_type(clicked), "")
+                                tip_text = TIPS.get(piece_type(clicked), "")
                         else:
                             selected = None
                             possible_moves = []
@@ -396,14 +398,14 @@ def main():
                             drag_from = cell
                             drag_pos = (mx, my)
                             if mode == MODE_LEARNING:
-                                tip_text = PIECE_TIPS.get(piece_type(clicked), "")
+                                tip_text = TIPS.get(piece_type(clicked), "")
 
                 if event.type == pygame.MOUSEMOTION:
                     drag_pos = (mx, my)
                     if mode == MODE_LEARNING and not selected:
                         cell = pixel_to_cell(mx, my, flipped, L)
                         if cell and board[cell[0]][cell[1]]:
-                            tip_text = PIECE_TIPS.get(
+                            tip_text = TIPS.get(
                                 piece_type(board[cell[0]][cell[1]]), ""
                             )
                         else:
@@ -452,7 +454,7 @@ def main():
                     )
                     screen.blit(surf, surf.get_rect(center=drag_pos))
 
-            badges = {"pvp": "PvP", "ai": "vs AI", "learning": "Learning"}
+            badges = {"pvp": BADGE_PVP, "ai": BADGE_AI, "learning": BADGE_LEARNING}
             badge = fonts["sub"].render(badges.get(mode, ""), True, (120, 120, 120))
             screen.blit(badge, (L.board_w - badge.get_width() - 8, 6))
 

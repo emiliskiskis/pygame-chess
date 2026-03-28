@@ -20,6 +20,18 @@ from constants import (
     MODE_AI,
     MODE_LEARNING,
 )
+from strings import (
+    MENU_TITLE, MENU_SUBTITLE, MENU_HINT,
+    MENU_PVP_LABEL, MENU_PVP_DESC,
+    MENU_AI_LABEL, MENU_AI_DESC,
+    MENU_LEARNING_LABEL, MENU_LEARNING_DESC,
+    PANEL_HEADER as STR_PANEL_HEADER,
+    PANEL_COL_NUMBER, PANEL_COL_WHITE, PANEL_COL_BLACK,
+    NOTATION_LABEL, NOTATION_HINT,
+    PAUSE_TITLE, PAUSE_RESUME, PAUSE_RESTART, PAUSE_MENU,
+    PAUSE_FULLSCREEN, PAUSE_QUIT, PAUSE_ESC_HINT,
+    OVER_PLAY_AGAIN, OVER_MENU, OVER_QUIT,
+)
 
 
 def view_to_board(vr, vc, flipped):
@@ -38,20 +50,59 @@ def pixel_to_cell(mx, my, flipped, L):
     return None
 
 
+def _best_font(candidates, size, bold=False):
+    """Return the first available SysFont from candidates; fall back to pygame default."""
+    for name in candidates:
+        if pygame.font.match_font(name):
+            return pygame.font.SysFont(name, size, bold=bold)
+    return pygame.font.Font(None, size)
+
+# Fonts with broad Unicode / chess-symbol coverage (tried in order)
+_SYMBOL = [
+    "segoeuisymbol",      # Windows
+    "notosanssymbols2",   # Linux (Noto)
+    "notosanssymbols",
+    "symbola",            # comprehensive Unicode font
+    "dejavusans",
+    "freesans",
+]
+# Fonts for emoji (color emoji preferred, then symbol fallbacks)
+_EMOJI = [
+    "notocoloremoji",     # Linux
+    "seguiemj",           # Windows (Segoe UI Emoji)
+] + _SYMBOL
+# Plain Latin text fonts
+_TEXT = ["arial", "liberationsans", "dejavusans", "freesans"]
+
+
 def make_fonts(L):
     return {
-        "coord": pygame.font.SysFont("Arial", L.fs_coord, bold=True),
-        "status": pygame.font.SysFont("Arial", L.fs_status, bold=True),
-        "piece": pygame.font.SysFont("Segoe UI Symbol", L.fs_piece),
-        "panel": pygame.font.SysFont("Arial", L.fs_panel),
-        "header": pygame.font.SysFont("Arial", L.fs_header, bold=True),
-        "tip": pygame.font.SysFont("Arial", L.fs_tip),
-        "title": pygame.font.SysFont("Arial", L.fs_title, bold=True),
-        "btn": pygame.font.SysFont("Arial", L.fs_btn, bold=True),
-        "sub": pygame.font.SysFont("Arial", L.fs_sub),
-        "over": pygame.font.SysFont("Arial", L.fs_over, bold=True),
-        "bar": pygame.font.SysFont("Arial", L.fs_bar),
+        "coord":  _best_font(_TEXT,   L.fs_coord,  bold=True),
+        "status": _best_font(_TEXT,   L.fs_status, bold=True),
+        "piece":  _best_font(_SYMBOL, L.fs_piece),
+        "panel":  _best_font(_TEXT,   L.fs_panel),
+        "header": _best_font(_TEXT,   L.fs_header, bold=True),
+        "tip":    _best_font(_TEXT,   L.fs_tip),
+        "title":  _best_font(_TEXT,   L.fs_title,  bold=True),
+        "btn":    _best_font(_TEXT,   L.fs_btn,    bold=True),
+        "icon":   _best_font(_SYMBOL, L.fs_btn),
+        "sub":    _best_font(_TEXT,   L.fs_sub),
+        "over":   _best_font(_TEXT,   L.fs_over,   bold=True),
+        "bar":    _best_font(_TEXT,   L.fs_bar),
     }
+
+
+def _blit_icon_btn(screen, rect, icon_font, icon, icon_color, text_font, text, text_color):
+    """Render a colored chess-piece icon and UTF-8 text side-by-side, centered in rect."""
+    icon_s = icon_font.render(icon, True, icon_color)
+    text_s = text_font.render(text, True, text_color)
+    gap = 8
+    total_w = icon_s.get_width() + gap + text_s.get_width()
+    row_h = max(icon_s.get_height(), text_s.get_height())
+    x = rect.centerx - total_w // 2
+    y = rect.centery - row_h // 2
+    screen.blit(icon_s, (x, y + (row_h - icon_s.get_height()) // 2))
+    screen.blit(text_s, (x + icon_s.get_width() + gap, y + (row_h - text_s.get_height()) // 2))
 
 
 def draw_board(screen, L):
@@ -187,7 +238,7 @@ def draw_notation_bar(screen, fonts, bar_text, bar_error, L):
     border_col = (200, 60, 60) if bar_error else (100, 100, 120)
     pygame.draw.rect(screen, border_col, (bx, by, bw, bh), 1, border_radius=4)
 
-    label = f.render("Move: ", True, (140, 140, 160))
+    label = f.render(NOTATION_LABEL, True, (140, 140, 160))
     screen.blit(label, (bx + pad, by + (bh - label.get_height()) // 2))
 
     text_x = bx + pad + label.get_width()
@@ -195,7 +246,7 @@ def draw_notation_bar(screen, fonts, bar_text, bar_error, L):
     txt_s = f.render(disp, True, (220, 220, 255) if not bar_error else (255, 120, 120))
     screen.blit(txt_s, (text_x, by + (bh - txt_s.get_height()) // 2))
 
-    hint = f.render("Enter to submit  |  Esc clears", True, (70, 70, 90))
+    hint = f.render(NOTATION_HINT, True, (70, 70, 90))
     screen.blit(hint, hint.get_rect(midright=(bx + bw - pad, by + bh // 2)))
 
 
@@ -204,7 +255,7 @@ def draw_move_panel(screen, fonts, move_history, L):
     header_rect = pygame.Rect(L.board_w, 0, L.panel_w, L.border_top)
     pygame.draw.rect(screen, PANEL_BG, panel_rect)
     pygame.draw.rect(screen, PANEL_HEADER, header_rect)
-    title = fonts["header"].render("Moves", True, (255, 220, 50))
+    title = fonts["header"].render(STR_PANEL_HEADER, True, (255, 220, 50))
     screen.blit(
         title, title.get_rect(center=(L.board_w + L.panel_w // 2, L.border_top // 2))
     )
@@ -221,9 +272,9 @@ def draw_move_panel(screen, fonts, move_history, L):
     col_w = L.board_w + 32
     col_b = L.board_w + L.panel_w // 2 + 8
     y_hdr = L.border_top + 6
-    screen.blit(fp.render("#", True, (140, 140, 140)), (col_num, y_hdr))
-    screen.blit(fp.render("White", True, PANEL_TEXT_W), (col_w, y_hdr))
-    screen.blit(fp.render("Black", True, PANEL_TEXT_B), (col_b, y_hdr))
+    screen.blit(fp.render(PANEL_COL_NUMBER, True, (140, 140, 140)), (col_num, y_hdr))
+    screen.blit(fp.render(PANEL_COL_WHITE,  True, PANEL_TEXT_W),    (col_w,   y_hdr))
+    screen.blit(fp.render(PANEL_COL_BLACK,  True, PANEL_TEXT_B),    (col_b,   y_hdr))
     pygame.draw.line(
         screen,
         (60, 60, 60),
@@ -264,24 +315,34 @@ def draw_move_panel(screen, fonts, move_history, L):
             screen.blit(fp.render(bm, True, PANEL_TEXT_B), (col_b, y))
 
 
+def _draw_gradient(screen, w, h, top_col, bottom_col):
+    """Fill screen with a smooth vertical gradient between two RGB colours."""
+    for y in range(h):
+        t = y / max(h - 1, 1)
+        r = int(top_col[0] + (bottom_col[0] - top_col[0]) * t)
+        g = int(top_col[1] + (bottom_col[1] - top_col[1]) * t)
+        b = int(top_col[2] + (bottom_col[2] - top_col[2]) * t)
+        pygame.draw.line(screen, (r, g, b), (0, y), (w, y))
+
+
 def draw_menu(screen, fonts, hovered, L):
-    screen.fill((20, 20, 20))
+    _draw_gradient(screen, screen.get_width(), screen.get_height(), (91, 44, 111), (247, 220, 111))
     cy = L.window_h // 2
-    title = fonts["title"].render("♟ Chess", True, (255, 220, 50))
+    title = fonts["title"].render(MENU_TITLE, True, (255, 220, 50))
     screen.blit(title, title.get_rect(center=(L.window_w // 2, cy - 180)))
-    sub = fonts["sub"].render("Choose a game mode", True, (180, 180, 180))
+    sub = fonts["sub"].render(MENU_SUBTITLE, True, (180, 180, 180))
     screen.blit(sub, sub.get_rect(center=(L.window_w // 2, cy - 115)))
 
     buttons = [
-        (MODE_PVP, "👥  Player vs Player", "Two humans play on the same computer"),
-        (MODE_AI, "🤖  Player vs AI", "Play against the computer (black)"),
-        (MODE_LEARNING, "📖  Learning Mode", "Hints, tips and move explanations"),
+        (MODE_PVP,      MENU_PVP_LABEL,      MENU_PVP_DESC,      "♙", (255, 215,  50)),
+        (MODE_AI,       MENU_AI_LABEL,       MENU_AI_DESC,       "♟", (255,  90,  90)),
+        (MODE_LEARNING, MENU_LEARNING_LABEL, MENU_LEARNING_DESC, "♗", ( 80, 200, 255)),
     ]
     bw = min(460, L.window_w - 80)
     bh = max(50, L.tile - 10)
     gap = bh + 18
     rects = {}
-    for i, (m, label, desc) in enumerate(buttons):
+    for i, (m, label, desc, icon, icon_col) in enumerate(buttons):
         bx = L.window_w // 2 - bw // 2
         by = cy - 60 + i * gap
         rect = pygame.Rect(bx, by, bw, bh)
@@ -290,16 +351,14 @@ def draw_menu(screen, fonts, hovered, L):
         border = (255, 220, 50) if hovered == m else (80, 80, 100)
         pygame.draw.rect(screen, col, rect, border_radius=12)
         pygame.draw.rect(screen, border, rect, 2, border_radius=12)
+        icon_s = fonts["icon"].render(icon, True, icon_col)
         ls = fonts["btn"].render(label, True, (240, 240, 240))
-        screen.blit(ls, ls.get_rect(midleft=(bx + 16, by + bh // 3)))
+        screen.blit(icon_s, icon_s.get_rect(midleft=(bx + 16, by + bh // 3)))
+        screen.blit(ls, ls.get_rect(midleft=(bx + 16 + icon_s.get_width() + 8, by + bh // 3)))
         ds = fonts["sub"].render(desc, True, (160, 160, 160))
         screen.blit(ds, ds.get_rect(midleft=(bx + 16, by + 2 * bh // 3)))
 
-    hint = fonts["sub"].render(
-        "F11 fullscreen   |   Arrow keys + Space: cursor   |   Type notation in bar below board",
-        True,
-        (80, 80, 80),
-    )
+    hint = fonts["sub"].render(MENU_HINT, True, (80, 80, 80))
     screen.blit(hint, hint.get_rect(center=(L.window_w // 2, L.window_h - 22)))
     return rects
 
@@ -316,7 +375,7 @@ def draw_pause_menu(screen, fonts, hovered, L):
     cx = L.window_w // 2
     cy = L.window_h // 2
 
-    title = fonts["over"].render("Paused", True, (255, 220, 50))
+    title = fonts["over"].render(PAUSE_TITLE, True, (255, 220, 50))
     screen.blit(
         title,
         title.get_rect(
@@ -330,16 +389,16 @@ def draw_pause_menu(screen, fonts, hovered, L):
     )
 
     actions = [
-        ("resume", "▶  Resume"),
-        ("restart", "↺  Restart"),
-        ("menu", "⌂  Main Menu"),
-        ("fullscreen", "⛶  Toggle Fullscreen"),
-        ("quit", "✕  Quit"),
+        ("resume",     PAUSE_RESUME,     "♙", ( 80, 220, 100)),
+        ("restart",    PAUSE_RESTART,    "♞", (255, 200,  50)),
+        ("menu",       PAUSE_MENU,       "♝", (130, 160, 255)),
+        ("fullscreen", PAUSE_FULLSCREEN, "♜", ( 80, 210, 210)),
+        ("quit",       PAUSE_QUIT,       "♛", (255,  90,  90)),
     ]
     rects = {}
     total_h = len(actions) * gap - (gap - bh)
     start_y = cy - total_h // 2
-    for i, (key, label) in enumerate(actions):
+    for i, (key, label, icon, icon_col) in enumerate(actions):
         bx = cx - bw // 2
         by = start_y + i * gap
         rect = pygame.Rect(bx, by, bw, bh)
@@ -348,10 +407,10 @@ def draw_pause_menu(screen, fonts, hovered, L):
         border = (255, 220, 50) if hovered == key else (70, 70, 95)
         pygame.draw.rect(screen, col, rect, border_radius=10)
         pygame.draw.rect(screen, border, rect, 2, border_radius=10)
-        ls = fonts["btn"].render(label, True, (230, 230, 230))
-        screen.blit(ls, ls.get_rect(center=rect.center))
+        _blit_icon_btn(screen, rect, fonts["icon"], icon, icon_col,
+                       fonts["btn"], label, (230, 230, 230))
 
-    esc_hint = fonts["sub"].render("Escape to resume", True, (90, 90, 90))
+    esc_hint = fonts["sub"].render(PAUSE_ESC_HINT, True, (90, 90, 90))
     screen.blit(
         esc_hint, esc_hint.get_rect(center=(cx, start_y + len(actions) * gap + 10))
     )
@@ -366,9 +425,9 @@ def draw_gameover_overlay(screen, fonts, message, over_hovered, L):
     screen.blit(ms, ms.get_rect(center=(L.window_w // 2, L.window_h // 2 - 90)))
 
     actions = [
-        ("restart", "↺  Play Again"),
-        ("menu", "⌂  Main Menu"),
-        ("quit", "✕  Quit"),
+        ("restart", OVER_PLAY_AGAIN, "♞", ( 80, 220, 100)),
+        ("menu",    OVER_MENU,       "♝", (130, 160, 255)),
+        ("quit",    OVER_QUIT,       "♛", (255,  90,  90)),
     ]
     bw = min(280, L.window_w - 80)
     bh = max(40, L.tile - 20)
@@ -378,7 +437,7 @@ def draw_gameover_overlay(screen, fonts, message, over_hovered, L):
     rects = {}
     total_h = len(actions) * gap - (gap - bh)
     start_y = cy - total_h // 2
-    for i, (key, label) in enumerate(actions):
+    for i, (key, label, icon, icon_col) in enumerate(actions):
         bx = cx - bw // 2
         by = start_y + i * gap
         rect = pygame.Rect(bx, by, bw, bh)
@@ -387,6 +446,6 @@ def draw_gameover_overlay(screen, fonts, message, over_hovered, L):
         border = (255, 220, 50) if over_hovered == key else (70, 70, 95)
         pygame.draw.rect(screen, col, rect, border_radius=10)
         pygame.draw.rect(screen, border, rect, 2, border_radius=10)
-        ls = fonts["btn"].render(label, True, (230, 230, 230))
-        screen.blit(ls, ls.get_rect(center=rect.center))
+        _blit_icon_btn(screen, rect, fonts["icon"], icon, icon_col,
+                       fonts["btn"], label, (230, 230, 230))
     return rects
