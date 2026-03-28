@@ -1,7 +1,20 @@
+"""
+Chess – main.py
+Controls
+--------
+Mouse           : click / drag pieces
+Notation box    : always-visible bar at the bottom; type e.g. "e4", "Nf3", "O-O" + Enter
+Arrow keys      : move board cursor
+Space / Enter   : confirm cursor selection (when notation bar is empty)
+Escape          : open / close pause menu  (clears notation bar if text is present)
+F11             : toggle fullscreen
+"""
+
 import copy
 import io
 import os
 import random
+import re
 import sys
 
 import pygame
@@ -14,21 +27,16 @@ except ImportError:
     HAS_CAIRO = False
 
 # ---------------------------------------------------------------------------
-# Layout — all sizes are derived from a single TILE_SIZE so the board
-# scales cleanly when the window is resized or goes fullscreen.
+# Constants
 # ---------------------------------------------------------------------------
-
-MIN_TILE = 40  # minimum tile size in pixels
-DEFAULT_TILE = 80  # starting tile size
-PANEL_RATIO = 0.25  # panel width as fraction of board width
-
+MIN_TILE = 40
+DEFAULT_TILE = 80
 FILES = "abcdefgh"
 RANKS = "87654321"
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 ASSET_DIR = os.path.join(SCRIPT_DIR, "assets")
 
-# Colour palette (never changes with scale)
 WHITE_TILE = (240, 217, 181)
 BLACK_TILE = (181, 136, 99)
 HIGHLIGHT_COLOR = (20, 85, 30, 180)
@@ -49,9 +57,11 @@ MODE_LEARNING = "learning"
 
 
 # ---------------------------------------------------------------------------
-# Layout helper — recomputed every time the window changes size
+# Layout  - recomputed on every resize / fullscreen toggle
 # ---------------------------------------------------------------------------
 class Layout:
+    PANEL_MIN = 160
+
     def __init__(self, win_w, win_h):
         self.update(win_w, win_h)
 
@@ -59,46 +69,51 @@ class Layout:
         self.win_w = win_w
         self.win_h = win_h
 
-        panel_w_min = 140
+        # Reserve fixed fractions for borders, then fit 8 tiles
+        bt_est = max(50, win_h // 9)
+        bb_est = max(40, win_h // 11)
+        bs_est = max(20, win_w // 24)
 
-        # Fixed border fractions — reserve space top, bottom, and sides before
-        # computing tile size so nothing ever gets clipped.
-        border_h_frac = win_w // 22  # left + right each
-        border_top_est = max(40, win_h // 9)
-        border_bot_est = max(30, win_h // 12)
-
-        tile_from_h = (win_h - border_top_est - border_bot_est) // 8
-        tile_from_w = (win_w - border_h_frac * 2 - panel_w_min) // 8
-        tile = max(MIN_TILE, min(tile_from_h, tile_from_w))
+        tile_h = (win_h - bt_est - bb_est) // 8
+        tile_w = (win_w - bs_est * 2 - self.PANEL_MIN) // 8
+        tile = max(MIN_TILE, min(tile_h, tile_w))
 
         self.tile = tile
         self.border_side = max(20, tile // 2)
-        self.border_top = max(40, tile + 5)
-        self.border_bottom = max(30, tile // 2)  # explicit bottom padding
+        self.border_top = max(50, tile + 5)
+        self.border_bottom = max(40, tile // 2)
 
         self.board_px = tile * 8
         self.board_w = self.board_px + self.border_side * 2
-        self.panel_w = max(panel_w_min, win_w - self.board_w)
+        self.panel_w = max(self.PANEL_MIN, win_w - self.board_w)
         self.window_w = self.board_w + self.panel_w
         self.window_h = self.board_px + self.border_top + self.border_bottom
 
-        # Font sizes scaled with tile
-        scale = tile / DEFAULT_TILE
-        self.fs_coord = max(10, int(16 * scale))
-        self.fs_status = max(12, int(20 * scale))
-        self.fs_piece = max(24, int(52 * scale))
-        self.fs_panel = max(10, int(14 * scale))
-        self.fs_header = max(11, int(17 * scale))
-        self.fs_tip = max(9, int(13 * scale))
-        self.fs_title = max(28, int(56 * scale))
-        self.fs_btn = max(14, int(20 * scale))
-        self.fs_sub = max(10, int(14 * scale))
-        self.fs_over = max(20, int(34 * scale))
-        self.panel_line = max(16, int(22 * scale))
+        # Notation bar inside the bottom border
+        bar_h = max(24, tile // 3)
+        self.bar_h = bar_h
+        self.bar_y = self.board_px + self.border_top + (self.border_bottom - bar_h) // 2
+        self.bar_x = self.border_side
+        self.bar_w = self.board_px
+
+        # Font sizes scale with tile
+        s = tile / DEFAULT_TILE
+        self.fs_coord = max(10, int(16 * s))
+        self.fs_status = max(12, int(18 * s))
+        self.fs_piece = max(24, int(52 * s))
+        self.fs_panel = max(10, int(14 * s))
+        self.fs_header = max(11, int(17 * s))
+        self.fs_tip = max(9, int(13 * s))
+        self.fs_title = max(28, int(56 * s))
+        self.fs_btn = max(14, int(20 * s))
+        self.fs_sub = max(10, int(14 * s))
+        self.fs_over = max(20, int(34 * s))
+        self.fs_bar = max(11, int(15 * s))
+        self.panel_line = max(16, int(22 * s))
 
 
 # ---------------------------------------------------------------------------
-# SVG / piece loading
+# SVG piece loading
 # ---------------------------------------------------------------------------
 def load_svg(path, size):
     png = cairosvg.svg2png(url=path, output_width=size, output_height=size)
@@ -107,16 +122,11 @@ def load_svg(path, size):
 
 def load_pieces(asset_dir, size):
     pieces = {}
-    if not HAS_CAIRO:
+    if not HAS_CAIRO or not os.path.isdir(asset_dir):
         return pieces
-    colors = ["white", "black"]
-    names = ["king", "queen", "rook", "bishop", "knight", "pawn"]
-    if not os.path.isdir(asset_dir):
-        return pieces
-    for color in colors:
-        for name in names:
-            filename = f"{name}_{color}.svg"
-            path = os.path.join(asset_dir, filename)
+    for color in ("white", "black"):
+        for name in ("king", "queen", "rook", "bishop", "knight", "pawn"):
+            path = os.path.join(asset_dir, f"{name}_{color}.svg")
             key = f"{color}_{name}"
             if os.path.isfile(path):
                 try:
@@ -126,15 +136,14 @@ def load_pieces(asset_dir, size):
     return pieces
 
 
-def reload_pieces(asset_dir, size, existing_pieces):
-    """Re-render SVG pieces at a new size; fall back gracefully."""
-    if not HAS_CAIRO or not existing_pieces:
-        return existing_pieces
+def reload_pieces(asset_dir, size, existing):
+    if not HAS_CAIRO or not existing:
+        return existing
     return load_pieces(asset_dir, size)
 
 
 # ---------------------------------------------------------------------------
-# Board
+# Board helpers
 # ---------------------------------------------------------------------------
 def starting_board():
     back = ["rook", "knight", "bishop", "queen", "king", "bishop", "knight", "rook"]
@@ -147,9 +156,6 @@ def starting_board():
     return board
 
 
-# ---------------------------------------------------------------------------
-# Chess logic (unchanged from original)
-# ---------------------------------------------------------------------------
 def piece_color(p):
     return p.split("_")[0] if p else None
 
@@ -166,12 +172,14 @@ def in_bounds(r, c):
     return 0 <= r < 8 and 0 <= c < 8
 
 
+# ---------------------------------------------------------------------------
+# Chess logic
+# ---------------------------------------------------------------------------
 def raw_moves(board, row, col):
     piece = board[row][col]
-    if piece is None:
+    if not piece:
         return []
-    color = piece_color(piece)
-    ptype = piece_type(piece)
+    color, ptype = piece_color(piece), piece_type(piece)
     moves = []
 
     def slide(dirs):
@@ -212,7 +220,7 @@ def raw_moves(board, row, col):
             moves.append((r, col))
             if row == sr and board[r + d][col] is None:
                 moves.append((r + d, col))
-        for dc in [-1, 1]:
+        for dc in (-1, 1):
             r, c = row + d, col + dc
             if in_bounds(r, c) and piece_color(board[r][c]) == opponent(color):
                 moves.append((r, c))
@@ -233,9 +241,10 @@ def is_in_check(board, color):
         return False
     for r in range(8):
         for c in range(8):
-            if piece_color(board[r][c]) == opponent(color):
-                if kp in raw_moves(board, r, c):
-                    return True
+            if piece_color(board[r][c]) == opponent(color) and kp in raw_moves(
+                board, r, c
+            ):
+                return True
     return False
 
 
@@ -248,10 +257,9 @@ def apply_move(board, fr, fc, tr, tc):
 
 def legal_moves(board, row, col, last_move, castling_rights):
     piece = board[row][col]
-    if piece is None:
+    if not piece:
         return []
-    color = piece_color(piece)
-    ptype = piece_type(piece)
+    color, ptype = piece_color(piece), piece_type(piece)
     cands = raw_moves(board, row, col)
 
     if ptype == "pawn" and last_move:
@@ -285,11 +293,7 @@ def legal_moves(board, row, col, last_move, castling_rights):
                     if not is_in_check(m, color) and not is_in_check(d, color):
                         legal.append((rk, 6))
             if castling_rights[color]["queenside"]:
-                if (
-                    board[rk][3] is None
-                    and board[rk][2] is None
-                    and board[rk][1] is None
-                ):
+                if all(board[rk][c] is None for c in (1, 2, 3)):
                     m = apply_move(board, rk, 4, rk, 3)
                     d = apply_move(m, rk, 4, rk, 2)
                     if not is_in_check(m, color) and not is_in_check(d, color):
@@ -308,7 +312,7 @@ def all_legal_moves(board, color, last_move, castling_rights):
 
 
 def has_any_legal_move(board, color, last_move, castling_rights):
-    return len(all_legal_moves(board, color, last_move, castling_rights)) > 0
+    return bool(all_legal_moves(board, color, last_move, castling_rights))
 
 
 def promote_pawns(board, color):
@@ -389,7 +393,71 @@ def execute_move(board, selected, dest, last_move, castling_rights, turn):
 
 
 # ---------------------------------------------------------------------------
-# AI
+# Algebraic notation parser
+# ---------------------------------------------------------------------------
+PIECE_LETTER = {"K": "king", "Q": "queen", "R": "rook", "B": "bishop", "N": "knight"}
+
+
+def parse_algebraic(text, board, color, last_move, castling_rights):
+    """
+    Parse standard algebraic notation and return ((fr,fc),(tr,tc)) or None.
+    Handles: e4, d5, exd5, Nf3, Bxe5, O-O, O-O-O, with optional disambiguation.
+    """
+    t = text.strip().rstrip("+#=")
+
+    # Castling
+    if t in ("O-O", "0-0", "o-o"):
+        rk = 7 if color == "white" else 0
+        moves = legal_moves(board, rk, 4, last_move, castling_rights)
+        if (rk, 6) in moves:
+            return (rk, 4), (rk, 6)
+        return None
+    if t in ("O-O-O", "0-0-0", "o-o-o"):
+        rk = 7 if color == "white" else 0
+        moves = legal_moves(board, rk, 4, last_move, castling_rights)
+        if (rk, 2) in moves:
+            return (rk, 4), (rk, 2)
+        return None
+
+    # Match: [piece][disambig][x][dest]
+    pat = re.fullmatch(r"([KQRBN]?)([a-h]?[1-8]?)x?([a-h][1-8])", t, re.IGNORECASE)
+    if not pat:
+        return None
+
+    piece_sym, disambig, dest_str = pat.group(1), pat.group(2), pat.group(3)
+    tc = FILES.index(dest_str[0].lower())
+    tr = 8 - int(dest_str[1])
+    ptype = PIECE_LETTER.get(piece_sym.upper(), "pawn")
+
+    candidates = []
+    for r in range(8):
+        for c in range(8):
+            p = board[r][c]
+            if piece_color(p) == color and piece_type(p) == ptype:
+                if (tr, tc) in legal_moves(board, r, c, last_move, castling_rights):
+                    candidates.append((r, c))
+
+    if not candidates:
+        return None
+
+    if disambig:
+        d = disambig.lower()
+        filtered = []
+        for r, c in candidates:
+            if d in FILES and FILES[c] == d:
+                filtered.append((r, c))
+            elif d.isdigit() and (8 - r) == int(d):
+                filtered.append((r, c))
+        if filtered:
+            candidates = filtered
+
+    if len(candidates) == 1:
+        return candidates[0], (tr, tc)
+    return None
+
+
+# ---------------------------------------------------------------------------
+# AI (minimax alpha-beta depth 3)
 # ---------------------------------------------------------------------------
 PIECE_VALUES = {
     "pawn": 100,
@@ -453,9 +521,9 @@ def minimax(board, depth, alpha, beta, maximising, last_move, castling_rights):
     if depth == 0 or not moves:
         return evaluate(board), None
     best_move = None
+    random.shuffle(moves)
     if maximising:
         best = -999999
-        random.shuffle(moves)
         for fr, fc, tr, tc in moves:
             b2 = copy.deepcopy(board)
             cr2 = copy.deepcopy(castling_rights)
@@ -470,7 +538,6 @@ def minimax(board, depth, alpha, beta, maximising, last_move, castling_rights):
         return best, best_move
     else:
         best = 999999
-        random.shuffle(moves)
         for fr, fc, tr, tc in moves:
             b2 = copy.deepcopy(board)
             cr2 = copy.deepcopy(castling_rights)
@@ -498,7 +565,7 @@ PIECE_TIPS = {
     "knight": "Knights move in an L-shape and can jump over pieces.",
     "bishop": "Bishops slide diagonally any number of squares.",
     "rook": "Rooks slide horizontally or vertically any number of squares.",
-    "queen": "Queens combine rook and bishop — the most powerful piece.",
+    "queen": "Queens combine rook and bishop - the most powerful piece.",
     "king": "Kings move 1 square in any direction. Protect yours!",
 }
 
@@ -523,10 +590,9 @@ def pixel_to_cell(mx, my, flipped, L):
 
 
 # ---------------------------------------------------------------------------
-# Drawing
+# Font factory
 # ---------------------------------------------------------------------------
 def make_fonts(L):
-    """Build all fonts at the current layout scale."""
     return {
         "coord": pygame.font.SysFont("Arial", L.fs_coord, bold=True),
         "status": pygame.font.SysFont("Arial", L.fs_status, bold=True),
@@ -538,9 +604,13 @@ def make_fonts(L):
         "btn": pygame.font.SysFont("Arial", L.fs_btn, bold=True),
         "sub": pygame.font.SysFont("Arial", L.fs_sub),
         "over": pygame.font.SysFont("Arial", L.fs_over, bold=True),
+        "bar": pygame.font.SysFont("Arial", L.fs_bar),
     }
 
 
+# ---------------------------------------------------------------------------
+# Drawing helpers
+# ---------------------------------------------------------------------------
 def draw_board(screen, L):
     screen.fill(BORDER_BG)
     for row in range(8):
@@ -605,18 +675,6 @@ def draw_highlights(screen, selected, moves, last_move_coords, cursor, flipped, 
         )
 
 
-def draw_pieces(screen, board, pieces, flipped, L, skip=None):
-    for row in range(8):
-        for col in range(8):
-            piece = board[row][col]
-            if piece and piece in pieces and (row, col) != skip:
-                vr, vc = board_to_view(row, col, flipped)
-                screen.blit(
-                    pieces[piece],
-                    (L.border_side + vc * L.tile, L.border_top + vr * L.tile),
-                )
-
-
 PIECE_SYMBOLS = {
     "white_king": "♔",
     "white_queen": "♕",
@@ -633,15 +691,25 @@ PIECE_SYMBOLS = {
 }
 
 
+def draw_pieces(screen, board, pieces, flipped, L, skip=None):
+    for row in range(8):
+        for col in range(8):
+            p = board[row][col]
+            if p and p in pieces and (row, col) != skip:
+                vr, vc = board_to_view(row, col, flipped)
+                screen.blit(
+                    pieces[p], (L.border_side + vc * L.tile, L.border_top + vr * L.tile)
+                )
+
+
 def draw_fallback_pieces(screen, board, fonts, flipped, L, skip=None):
     f = fonts["piece"]
     for row in range(8):
         for col in range(8):
-            piece = board[row][col]
-            if piece and (row, col) != skip:
+            p = board[row][col]
+            if p and (row, col) != skip:
                 vr, vc = board_to_view(row, col, flipped)
-                sym = PIECE_SYMBOLS.get(piece, "?")
-                surf = f.render(sym, True, (30, 30, 30))
+                surf = f.render(PIECE_SYMBOLS.get(p, "?"), True, (30, 30, 30))
                 rect = surf.get_rect(
                     center=(
                         L.border_side + vc * L.tile + L.tile // 2,
@@ -653,7 +721,7 @@ def draw_fallback_pieces(screen, board, fonts, flipped, L, skip=None):
 
 def draw_status(screen, fonts, message, L):
     s = fonts["status"].render(message, True, (255, 220, 50))
-    screen.blit(s, s.get_rect(center=(L.board_w // 2, L.border_top // 2 - 4)))
+    screen.blit(s, s.get_rect(center=(L.board_w // 2, L.border_top // 2)))
 
 
 def draw_tip(screen, fonts, tip_text, L):
@@ -673,18 +741,38 @@ def draw_tip(screen, fonts, tip_text, L):
             line = w
     if line:
         lines.append(line)
-    y = (
-        L.border_top
-        + 8 * L.tile
-        + max(6, (L.border_bottom - f.get_linesize() * len(lines)) // 2)
-    )
+    total_h = f.get_linesize() * len(lines)
+    y = L.border_top + 8 * L.tile + (L.border_bottom - total_h) // 2
     for ln in lines:
         s = f.render(ln, True, (180, 230, 180))
         screen.blit(s, (L.border_side, y))
         y += f.get_linesize()
 
 
-def draw_move_panel(screen, fonts, move_history, scroll_offset, L):
+def draw_notation_bar(screen, fonts, bar_text, bar_error, L):
+    """Always-visible algebraic notation input bar."""
+    f = fonts["bar"]
+    bx, by = L.bar_x, L.bar_y
+    bw, bh = L.bar_w, L.bar_h
+    pad = max(4, bh // 5)
+
+    pygame.draw.rect(screen, (20, 20, 20), (bx, by, bw, bh), border_radius=4)
+    border_col = (200, 60, 60) if bar_error else (100, 100, 120)
+    pygame.draw.rect(screen, border_col, (bx, by, bw, bh), 1, border_radius=4)
+
+    label = f.render("Move: ", True, (140, 140, 160))
+    screen.blit(label, (bx + pad, by + (bh - label.get_height()) // 2))
+
+    text_x = bx + pad + label.get_width()
+    disp = bar_text + ("|" if (pygame.time.get_ticks() // 500) % 2 == 0 else "")
+    txt_s = f.render(disp, True, (220, 220, 255) if not bar_error else (255, 120, 120))
+    screen.blit(txt_s, (text_x, by + (bh - txt_s.get_height()) // 2))
+
+    hint = f.render("Enter to submit  |  Esc clears", True, (70, 70, 90))
+    screen.blit(hint, hint.get_rect(midright=(bx + bw - pad, by + bh // 2)))
+
+
+def draw_move_panel(screen, fonts, move_history, L):
     panel_rect = pygame.Rect(L.board_w, 0, L.panel_w, L.window_h)
     header_rect = pygame.Rect(L.board_w, 0, L.panel_w, L.border_top)
     pygame.draw.rect(screen, PANEL_BG, panel_rect)
@@ -702,13 +790,13 @@ def draw_move_panel(screen, fonts, move_history, scroll_offset, L):
     )
 
     fp = fonts["panel"]
-    col_x_num = L.board_w + 8
-    col_x_w = L.board_w + 32
-    col_x_b = L.board_w + L.panel_w // 2 + 8
+    col_num = L.board_w + 8
+    col_w = L.board_w + 32
+    col_b = L.board_w + L.panel_w // 2 + 8
     y_hdr = L.border_top + 6
-    screen.blit(fp.render("#", True, (140, 140, 140)), (col_x_num, y_hdr))
-    screen.blit(fp.render("White", True, PANEL_TEXT_W), (col_x_w, y_hdr))
-    screen.blit(fp.render("Black", True, PANEL_TEXT_B), (col_x_b, y_hdr))
+    screen.blit(fp.render("#", True, (140, 140, 140)), (col_num, y_hdr))
+    screen.blit(fp.render("White", True, PANEL_TEXT_W), (col_w, y_hdr))
+    screen.blit(fp.render("Black", True, PANEL_TEXT_B), (col_b, y_hdr))
     pygame.draw.line(
         screen,
         (60, 60, 60),
@@ -743,11 +831,10 @@ def draw_move_panel(screen, fonts, move_history, scroll_offset, L):
                 (50, 50, 60),
                 (L.board_w + 4, y - 2, L.panel_w - 8, L.panel_line),
             )
-        screen.blit(fp.render(f"{mn}.", True, (120, 120, 120)), (col_x_num, y))
-        screen.blit(fp.render(wm, True, PANEL_TEXT_W), (col_x_w, y))
+        screen.blit(fp.render(f"{mn}.", True, (120, 120, 120)), (col_num, y))
+        screen.blit(fp.render(wm, True, PANEL_TEXT_W), (col_w, y))
         if bm:
-            screen.blit(fp.render(bm, True, PANEL_TEXT_B), (col_x_b, y))
-    return scroll_offset
+            screen.blit(fp.render(bm, True, PANEL_TEXT_B), (col_b, y))
 
 
 def draw_menu(screen, fonts, hovered, L):
@@ -755,8 +842,8 @@ def draw_menu(screen, fonts, hovered, L):
     cy = L.window_h // 2
     title = fonts["title"].render("♟ Chess", True, (255, 220, 50))
     screen.blit(title, title.get_rect(center=(L.window_w // 2, cy - 180)))
-    subtitle = fonts["sub"].render("Choose a game mode", True, (180, 180, 180))
-    screen.blit(subtitle, subtitle.get_rect(center=(L.window_w // 2, cy - 110)))
+    sub = fonts["sub"].render("Choose a game mode", True, (180, 180, 180))
+    screen.blit(sub, sub.get_rect(center=(L.window_w // 2, cy - 115)))
 
     buttons = [
         (MODE_PVP, "👥  Player vs Player", "Two humans play on the same computer"),
@@ -769,7 +856,7 @@ def draw_menu(screen, fonts, hovered, L):
     rects = {}
     for i, (m, label, desc) in enumerate(buttons):
         bx = L.window_w // 2 - bw // 2
-        by = cy - 50 + i * gap
+        by = cy - 60 + i * gap
         rect = pygame.Rect(bx, by, bw, bh)
         rects[m] = rect
         col = (70, 70, 90) if hovered == m else (45, 45, 60)
@@ -781,26 +868,101 @@ def draw_menu(screen, fonts, hovered, L):
         ds = fonts["sub"].render(desc, True, (160, 160, 160))
         screen.blit(ds, ds.get_rect(midleft=(bx + 16, by + 2 * bh // 3)))
 
-    # Controls hint
     hint = fonts["sub"].render(
-        "F11 / F  ·  fullscreen    Arrow keys + Enter  ·  keyboard control",
+        "F11 fullscreen   |   Arrow keys + Space: cursor   |   Type notation in bar below board",
         True,
-        (90, 90, 90),
+        (80, 80, 80),
     )
     screen.blit(hint, hint.get_rect(center=(L.window_w // 2, L.window_h - 22)))
     return rects
 
 
-def draw_gameover_overlay(screen, fonts, message, L):
+def draw_pause_menu(screen, fonts, hovered, L):
+    """Semi-transparent pause overlay with action buttons."""
     ov = pygame.Surface((L.window_w, L.window_h), pygame.SRCALPHA)
-    ov.fill((0, 0, 0, 160))
+    ov.fill((0, 0, 0, 185))
+    screen.blit(ov, (0, 0))
+
+    bw = min(320, L.window_w - 80)
+    bh = max(44, L.tile - 16)
+    gap = bh + 14
+    cx = L.window_w // 2
+    cy = L.window_h // 2
+
+    title = fonts["over"].render("Paused", True, (255, 220, 50))
+    screen.blit(
+        title,
+        title.get_rect(
+            center=(
+                cx,
+                cy
+                - len(["resume", "restart", "menu", "fullscreen", "quit"]) * gap // 2
+                - bh,
+            )
+        ),
+    )
+
+    actions = [
+        ("resume", "▶  Resume"),
+        ("restart", "↺  Restart"),
+        ("menu", "⌂  Main Menu"),
+        ("fullscreen", "⛶  Toggle Fullscreen"),
+        ("quit", "✕  Quit"),
+    ]
+    rects = {}
+    total_h = len(actions) * gap - (gap - bh)
+    start_y = cy - total_h // 2
+    for i, (key, label) in enumerate(actions):
+        bx = cx - bw // 2
+        by = start_y + i * gap
+        rect = pygame.Rect(bx, by, bw, bh)
+        rects[key] = rect
+        col = (80, 80, 110) if hovered == key else (45, 45, 65)
+        border = (255, 220, 50) if hovered == key else (70, 70, 95)
+        pygame.draw.rect(screen, col, rect, border_radius=10)
+        pygame.draw.rect(screen, border, rect, 2, border_radius=10)
+        ls = fonts["btn"].render(label, True, (230, 230, 230))
+        screen.blit(ls, ls.get_rect(center=rect.center))
+
+    esc_hint = fonts["sub"].render("Escape to resume", True, (90, 90, 90))
+    screen.blit(
+        esc_hint, esc_hint.get_rect(center=(cx, start_y + len(actions) * gap + 10))
+    )
+    return rects
+
+
+def draw_gameover_overlay(screen, fonts, message, over_hovered, L):
+    ov = pygame.Surface((L.window_w, L.window_h), pygame.SRCALPHA)
+    ov.fill((0, 0, 0, 175))
     screen.blit(ov, (0, 0))
     ms = fonts["over"].render(message, True, (255, 220, 50))
-    screen.blit(ms, ms.get_rect(center=(L.board_w // 2, L.window_h // 2 - 30)))
-    rs = fonts["sub"].render(
-        "R  restart   |   M  menu   |   Q  quit", True, (200, 200, 200)
-    )
-    screen.blit(rs, rs.get_rect(center=(L.board_w // 2, L.window_h // 2 + 24)))
+    screen.blit(ms, ms.get_rect(center=(L.window_w // 2, L.window_h // 2 - 90)))
+
+    actions = [
+        ("restart", "↺  Play Again"),
+        ("menu", "⌂  Main Menu"),
+        ("quit", "✕  Quit"),
+    ]
+    bw = min(280, L.window_w - 80)
+    bh = max(40, L.tile - 20)
+    gap = bh + 12
+    cx = L.window_w // 2
+    cy = L.window_h // 2
+    rects = {}
+    total_h = len(actions) * gap - (gap - bh)
+    start_y = cy - total_h // 2
+    for i, (key, label) in enumerate(actions):
+        bx = cx - bw // 2
+        by = start_y + i * gap
+        rect = pygame.Rect(bx, by, bw, bh)
+        rects[key] = rect
+        col = (80, 80, 110) if over_hovered == key else (45, 45, 65)
+        border = (255, 220, 50) if over_hovered == key else (70, 70, 95)
+        pygame.draw.rect(screen, col, rect, border_radius=10)
+        pygame.draw.rect(screen, border, rect, 2, border_radius=10)
+        ls = fonts["btn"].render(label, True, (230, 230, 230))
+        screen.blit(ls, ls.get_rect(center=rect.center))
+    return rects
 
 
 def post_move_status(board, turn, last_move, castling_rights):
@@ -819,36 +981,49 @@ def post_move_status(board, turn, last_move, castling_rights):
 def main():
     pygame.init()
 
-    # Start in a reasonable windowed size
-    init_w, init_h = 920, 765
-    screen = pygame.display.set_mode((init_w, init_h), pygame.RESIZABLE)
+    INIT_W, INIT_H = 960, 780
+    screen = pygame.display.set_mode((INIT_W, INIT_H), pygame.RESIZABLE)
     pygame.display.set_caption("Chess")
     clock = pygame.time.Clock()
 
     fullscreen = False
-    L = Layout(init_w, init_h)
+    L = Layout(INIT_W, INIT_H)
     fonts = make_fonts(L)
     pieces = load_pieces(ASSET_DIR, L.tile)
     use_svg = bool(pieces)
-    last_tile = L.tile  # track when we need to reload piece images
+    last_tile = L.tile
+
+    # Resize debounce: apply layout only after the user stops dragging
+    pending_size = None  # (w,h) waiting to be applied
+    resize_timer = 0  # ticks when we will apply it
+    RESIZE_DELAY = 100  # ms quiet period before re-layout
 
     mode = MODE_MENU
     menu_hovered = None
     menu_rects = {}
+    paused = False
+    pause_hovered = None
+    pause_rects = {}
+    over_hovered = None
+    over_rects = {}
 
-    # ── Game state ────────────────────────────────────────────────────────
+    bar_text = ""
+    bar_error = False
+
+    # Game state
     board = turn = selected = possible_moves = last_move = None
     castling_rights = status_msg = game_over = move_history = None
-    scroll_offset = flipped = cursor = tip_text = ai_thinking = None
+    flipped = cursor = tip_text = ai_thinking = None
     dragging = False
     drag_piece_key = drag_from = None
     drag_pos = (0, 0)
 
     def new_game(new_mode):
         nonlocal board, turn, selected, possible_moves, last_move
-        nonlocal castling_rights, status_msg, game_over
-        nonlocal move_history, scroll_offset, flipped
-        nonlocal cursor, tip_text, ai_thinking
+        nonlocal castling_rights, status_msg, game_over, move_history
+        nonlocal flipped, cursor, tip_text, ai_thinking
+        nonlocal bar_text, bar_error, paused, over_hovered, over_rects
+        nonlocal pause_hovered, pause_rects
         board = starting_board()
         turn = "white"
         selected = None
@@ -861,11 +1036,17 @@ def main():
         status_msg = "White's turn"
         game_over = False
         move_history = []
-        scroll_offset = 0
         flipped = False
         cursor = (7, 4)
         tip_text = ""
         ai_thinking = False
+        bar_text = ""
+        bar_error = False
+        paused = False
+        over_hovered = None
+        over_rects = {}
+        pause_hovered = None
+        pause_rects = {}
 
     def apply_new_size(w, h):
         nonlocal L, fonts, pieces, use_svg, last_tile
@@ -882,34 +1063,49 @@ def main():
         if fullscreen:
             screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
         else:
-            screen = pygame.display.set_mode((init_w, init_h), pygame.RESIZABLE)
-        w, h = screen.get_size()
-        apply_new_size(w, h)
+            screen = pygame.display.set_mode((INIT_W, INIT_H), pygame.RESIZABLE)
+        apply_new_size(*screen.get_size())
 
-    # ── Main loop ─────────────────────────────────────────────────────────
+    def do_move(from_sq, to_sq):
+        nonlocal last_move, castling_rights, turn, selected, possible_moves
+        nonlocal status_msg, game_over, tip_text, bar_text, bar_error
+        last_move, castling_rights, notation = execute_move(
+            board, from_sq, to_sq, last_move, castling_rights, turn
+        )
+        move_history.append(notation)
+        turn = opponent(turn)
+        selected = None
+        possible_moves = []
+        tip_text = ""
+        bar_text = ""
+        bar_error = False
+        status_msg, game_over = post_move_status(
+            board, turn, last_move, castling_rights
+        )
+
+    # ── Main loop ──────────────────────────────────────────────────────────
     while True:
+        now = pygame.time.get_ticks()
         mx, my = pygame.mouse.get_pos()
+
+        # Apply deferred resize once quiet
+        if pending_size and now >= resize_timer:
+            apply_new_size(*pending_size)
+            pending_size = None
 
         # AI turn
         if (
             mode == MODE_AI
-            and turn == "black"
             and board
+            and turn == "black"
             and not game_over
             and not ai_thinking
+            and not paused
         ):
             ai_thinking = True
             move = ai_move(board, last_move, castling_rights)
             if move:
-                fr, fc, tr, tc = move
-                last_move, castling_rights, notation = execute_move(
-                    board, (fr, fc), (tr, tc), last_move, castling_rights, "black"
-                )
-                move_history.append(notation)
-                turn = "white"
-                status_msg, game_over = post_move_status(
-                    board, turn, last_move, castling_rights
-                )
+                do_move((move[0], move[1]), (move[2], move[3]))
             ai_thinking = False
 
         for event in pygame.event.get():
@@ -917,26 +1113,21 @@ def main():
                 pygame.quit()
                 sys.exit()
 
-            # Window resize
+            # ── Resize: buffer the latest size, defer application ──────────
             if event.type == pygame.VIDEORESIZE:
-                w, h = max(event.w, 400), max(event.h, 400)
+                w = max(event.w, 400)
+                h = max(event.h, 400)
+                # Update the window surface immediately so it doesn't look blank,
+                # but only re-layout after the quiet period.
                 screen = pygame.display.set_mode((w, h), pygame.RESIZABLE)
-                apply_new_size(w, h)
+                pending_size = (w, h)
+                resize_timer = now + RESIZE_DELAY
+                continue  # skip all other processing this frame
 
-            # Global keys
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_q:
-                    pygame.quit()
-                    sys.exit()
-                if event.key == pygame.K_m:
-                    mode = MODE_MENU
-                    continue
-                if event.key in (pygame.K_F11, pygame.K_f):
-                    toggle_fullscreen()
-                    continue
-                if event.key == pygame.K_r and mode != MODE_MENU:
-                    new_game(mode)
-                    continue
+            # ── F11 always works ──────────────────────────────────────────
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_F11:
+                toggle_fullscreen()
+                continue
 
             # ── Menu ──────────────────────────────────────────────────────
             if mode == MODE_MENU:
@@ -953,169 +1144,212 @@ def main():
                             break
                 continue
 
-            # ── In-game keyboard ──────────────────────────────────────────
-            if event.type == pygame.KEYDOWN and board and not game_over:
-                if not (mode == MODE_AI and turn == "black"):
-                    kn = pygame.key.name(event.key).upper()
-                    if event.key in (
-                        pygame.K_UP,
-                        pygame.K_DOWN,
-                        pygame.K_LEFT,
-                        pygame.K_RIGHT,
-                    ):
-                        dr = {"UP": -1, "DOWN": 1}.get(kn, 0)
-                        dc = {"LEFT": -1, "RIGHT": 1}.get(kn, 0)
-                        if flipped:
-                            dr, dc = -dr, -dc
-                        nr = max(0, min(7, cursor[0] + dr))
-                        nc = max(0, min(7, cursor[1] + dc))
-                        cursor = (nr, nc)
-                        if mode == MODE_LEARNING and board[nr][nc]:
-                            tip_text = PIECE_TIPS.get(piece_type(board[nr][nc]), "")
+            # ── Pause menu ────────────────────────────────────────────────
+            if paused and not game_over:
+                if event.type == pygame.MOUSEMOTION:
+                    pause_hovered = None
+                    for k, rect in pause_rects.items():
+                        if rect.collidepoint(mx, my):
+                            pause_hovered = k
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    for k, rect in pause_rects.items():
+                        if rect.collidepoint(mx, my):
+                            if k == "resume":
+                                paused = False
+                            elif k == "restart":
+                                new_game(mode)
+                            elif k == "menu":
+                                mode = MODE_MENU
+                            elif k == "fullscreen":
+                                toggle_fullscreen()
+                            elif k == "quit":
+                                pygame.quit()
+                                sys.exit()
+                            break
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                    paused = False
+                continue
+
+            # ── Game-over overlay ─────────────────────────────────────────
+            if game_over:
+                if event.type == pygame.MOUSEMOTION:
+                    over_hovered = None
+                    for k, rect in over_rects.items():
+                        if rect.collidepoint(mx, my):
+                            over_hovered = k
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    for k, rect in over_rects.items():
+                        if rect.collidepoint(mx, my):
+                            if k == "restart":
+                                new_game(mode)
+                            elif k == "menu":
+                                mode = MODE_MENU
+                            elif k == "quit":
+                                pygame.quit()
+                                sys.exit()
+                            break
+                continue
+
+            # ── In-game ───────────────────────────────────────────────────
+            block = mode == MODE_AI and turn == "black"
+
+            if event.type == pygame.KEYDOWN and not block:
+                # Escape: clear bar first, then pause
+                if event.key == pygame.K_ESCAPE:
+                    if bar_text:
+                        bar_text = ""
+                        bar_error = False
+                    else:
+                        paused = True
+                        pause_hovered = None
+                    continue
+
+                # ── Notation bar ──────────────────────────────────────────
+                if event.key == pygame.K_RETURN:
+                    if bar_text.strip():
+                        result = parse_algebraic(
+                            bar_text, board, turn, last_move, castling_rights
+                        )
+                        if result:
+                            do_move(*result)
                         else:
-                            tip_text = ""
-                    elif event.key in (pygame.K_RETURN, pygame.K_SPACE):
-                        r, c = cursor
-                        clicked = board[r][c]
-                        if selected:
-                            if cursor in possible_moves:
-                                last_move, castling_rights, notation = execute_move(
-                                    board,
-                                    selected,
-                                    cursor,
-                                    last_move,
-                                    castling_rights,
-                                    turn,
-                                )
-                                move_history.append(notation)
-                                turn = opponent(turn)
-                                selected = None
-                                possible_moves = []
-                                tip_text = ""
-                                status_msg, game_over = post_move_status(
-                                    board, turn, last_move, castling_rights
-                                )
-                            elif clicked and piece_color(clicked) == turn:
-                                selected = cursor
-                                possible_moves = legal_moves(
-                                    board, r, c, last_move, castling_rights
-                                )
-                                if mode == MODE_LEARNING:
-                                    tip_text = PIECE_TIPS.get(piece_type(clicked), "")
-                            else:
-                                selected = None
-                                possible_moves = []
-                        else:
-                            if clicked and piece_color(clicked) == turn:
-                                selected = cursor
-                                possible_moves = legal_moves(
-                                    board, r, c, last_move, castling_rights
-                                )
-                                if mode == MODE_LEARNING:
-                                    tip_text = PIECE_TIPS.get(piece_type(clicked), "")
-                    elif event.key == pygame.K_ESCAPE:
-                        selected = None
-                        possible_moves = []
+                            bar_error = True
+                    # Enter with empty bar = confirm cursor move (see below)
+                    elif selected and cursor in possible_moves:
+                        do_move(selected, cursor)
+                    continue
+
+                if event.key == pygame.K_BACKSPACE:
+                    bar_text = bar_text[:-1]
+                    bar_error = False
+                    continue
+
+                # Characters valid in algebraic notation feed into the bar
+                NOTATION_CHARS = set("abcdefghABCDEFGH12345678KQRBNkqrbnxXoO0-+#")
+                if (
+                    event.unicode
+                    and event.unicode.isprintable()
+                    and event.unicode in NOTATION_CHARS
+                    and len(bar_text) < 12
+                ):
+                    bar_text += event.unicode
+                    bar_error = False
+                    continue
+
+                # ── Arrow keys move cursor ────────────────────────────────
+                kn = pygame.key.name(event.key).upper()
+                if event.key in (
+                    pygame.K_UP,
+                    pygame.K_DOWN,
+                    pygame.K_LEFT,
+                    pygame.K_RIGHT,
+                ):
+                    dr = {"UP": -1, "DOWN": 1}.get(kn, 0)
+                    dc = {"LEFT": -1, "RIGHT": 1}.get(kn, 0)
+                    if flipped:
+                        dr, dc = -dr, -dc
+                    nr = max(0, min(7, cursor[0] + dr))
+                    nc = max(0, min(7, cursor[1] + dc))
+                    cursor = (nr, nc)
+                    if mode == MODE_LEARNING and board[nr][nc]:
+                        tip_text = PIECE_TIPS.get(piece_type(board[nr][nc]), "")
+                    else:
                         tip_text = ""
+                    continue
 
-            # ── Mouse (game) ───────────────────────────────────────────────
-            if mode != MODE_MENU and board and not game_over:
-                if not (mode == MODE_AI and turn == "black"):
-                    if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                        cell = pixel_to_cell(mx, my, flipped, L)
-                        if cell is None:
-                            continue
-                        r, c = cell
-                        clicked = board[r][c]
-                        cursor = cell
-                        if selected:
-                            if cell in possible_moves:
-                                last_move, castling_rights, notation = execute_move(
-                                    board,
-                                    selected,
-                                    cell,
-                                    last_move,
-                                    castling_rights,
-                                    turn,
-                                )
-                                move_history.append(notation)
-                                turn = opponent(turn)
-                                selected = None
-                                possible_moves = []
-                                tip_text = ""
-                                status_msg, game_over = post_move_status(
-                                    board, turn, last_move, castling_rights
-                                )
-                            elif clicked and piece_color(clicked) == turn:
-                                selected = cell
-                                possible_moves = legal_moves(
-                                    board, r, c, last_move, castling_rights
-                                )
-                                dragging = True
-                                drag_piece_key = clicked
-                                drag_from = cell
-                                drag_pos = (mx, my)
-                                if mode == MODE_LEARNING:
-                                    tip_text = PIECE_TIPS.get(piece_type(clicked), "")
-                            else:
-                                selected = None
-                                possible_moves = []
-                                tip_text = ""
-                        else:
-                            if clicked and piece_color(clicked) == turn:
-                                selected = cell
-                                possible_moves = legal_moves(
-                                    board, r, c, last_move, castling_rights
-                                )
-                                dragging = True
-                                drag_piece_key = clicked
-                                drag_from = cell
-                                drag_pos = (mx, my)
-                                if mode == MODE_LEARNING:
-                                    tip_text = PIECE_TIPS.get(piece_type(clicked), "")
-
-                    if event.type == pygame.MOUSEMOTION:
-                        drag_pos = (mx, my)
-                        if mode == MODE_LEARNING and not selected:
-                            cell = pixel_to_cell(mx, my, flipped, L)
-                            if cell and board[cell[0]][cell[1]]:
-                                tip_text = PIECE_TIPS.get(
-                                    piece_type(board[cell[0]][cell[1]]), ""
-                                )
-                            else:
-                                tip_text = ""
-
-                    if (
-                        event.type == pygame.MOUSEBUTTONUP
-                        and event.button == 1
-                        and dragging
-                    ):
-                        dragging = False
-                        cell = pixel_to_cell(mx, my, flipped, L)
-                        if (
-                            cell
-                            and selected
-                            and cell in possible_moves
-                            and cell != selected
-                        ):
-                            last_move, castling_rights, notation = execute_move(
-                                board, selected, cell, last_move, castling_rights, turn
+                # Space confirms cursor selection (Enter handled above)
+                if event.key == pygame.K_SPACE:
+                    r, c = cursor
+                    clicked = board[r][c]
+                    if selected:
+                        if cursor in possible_moves:
+                            do_move(selected, cursor)
+                        elif clicked and piece_color(clicked) == turn:
+                            selected = cursor
+                            possible_moves = legal_moves(
+                                board, r, c, last_move, castling_rights
                             )
-                            move_history.append(notation)
-                            turn = opponent(turn)
+                            if mode == MODE_LEARNING:
+                                tip_text = PIECE_TIPS.get(piece_type(clicked), "")
+                        else:
+                            selected = None
+                            possible_moves = []
+                    else:
+                        if clicked and piece_color(clicked) == turn:
+                            selected = cursor
+                            possible_moves = legal_moves(
+                                board, r, c, last_move, castling_rights
+                            )
+                            if mode == MODE_LEARNING:
+                                tip_text = PIECE_TIPS.get(piece_type(clicked), "")
+
+            # ── Mouse ─────────────────────────────────────────────────────
+            if not block:
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    cell = pixel_to_cell(mx, my, flipped, L)
+                    if cell is None:
+                        continue
+                    r, c = cell
+                    clicked = board[r][c]
+                    cursor = cell
+                    if selected:
+                        if cell in possible_moves:
+                            do_move(selected, cell)
+                        elif clicked and piece_color(clicked) == turn:
+                            selected = cell
+                            possible_moves = legal_moves(
+                                board, r, c, last_move, castling_rights
+                            )
+                            dragging = True
+                            drag_piece_key = clicked
+                            drag_from = cell
+                            drag_pos = (mx, my)
+                            if mode == MODE_LEARNING:
+                                tip_text = PIECE_TIPS.get(piece_type(clicked), "")
+                        else:
                             selected = None
                             possible_moves = []
                             tip_text = ""
-                            status_msg, game_over = post_move_status(
-                                board, turn, last_move, castling_rights
+                    else:
+                        if clicked and piece_color(clicked) == turn:
+                            selected = cell
+                            possible_moves = legal_moves(
+                                board, r, c, last_move, castling_rights
                             )
+                            dragging = True
+                            drag_piece_key = clicked
+                            drag_from = cell
+                            drag_pos = (mx, my)
+                            if mode == MODE_LEARNING:
+                                tip_text = PIECE_TIPS.get(piece_type(clicked), "")
+
+                if event.type == pygame.MOUSEMOTION:
+                    drag_pos = (mx, my)
+                    if mode == MODE_LEARNING and not selected:
+                        cell = pixel_to_cell(mx, my, flipped, L)
+                        if cell and board[cell[0]][cell[1]]:
+                            tip_text = PIECE_TIPS.get(
+                                piece_type(board[cell[0]][cell[1]]), ""
+                            )
+                        else:
+                            tip_text = ""
+
+                if (
+                    event.type == pygame.MOUSEBUTTONUP
+                    and event.button == 1
+                    and dragging
+                ):
+                    dragging = False
+                    cell = pixel_to_cell(mx, my, flipped, L)
+                    if (
+                        cell
+                        and selected
+                        and cell in possible_moves
+                        and cell != selected
+                    ):
+                        do_move(selected, cell)
 
         # ── Render ────────────────────────────────────────────────────────
-        # Make sure screen matches display (handles OS-driven resize on some platforms)
-        sw, sh = screen.get_size()
-        if sw != L.win_w or sh != L.win_h:
-            apply_new_size(sw, sh)
-
         if mode == MODE_MENU:
             menu_rects = draw_menu(screen, fonts, menu_hovered, L)
         else:
@@ -1137,7 +1371,7 @@ def main():
                 if use_svg and drag_piece_key in pieces:
                     img = pieces[drag_piece_key]
                     screen.blit(img, img.get_rect(center=drag_pos))
-                elif not use_svg:
+                else:
                     surf = fonts["piece"].render(
                         PIECE_SYMBOLS.get(drag_piece_key, "?"), True, (30, 30, 30)
                     )
@@ -1149,14 +1383,20 @@ def main():
 
             if status_msg:
                 draw_status(screen, fonts, status_msg, L)
+
             if mode == MODE_LEARNING and tip_text:
                 draw_tip(screen, fonts, tip_text, L)
-            if move_history is not None:
-                scroll_offset = draw_move_panel(
-                    screen, fonts, move_history, scroll_offset, L
+            else:
+                draw_notation_bar(screen, fonts, bar_text, bar_error, L)
+
+            draw_move_panel(screen, fonts, move_history or [], L)
+
+            if game_over:
+                over_rects = draw_gameover_overlay(
+                    screen, fonts, status_msg, over_hovered, L
                 )
-            if game_over and status_msg:
-                draw_gameover_overlay(screen, fonts, status_msg, L)
+            elif paused:
+                pause_rects = draw_pause_menu(screen, fonts, pause_hovered, L)
 
         pygame.display.flip()
         clock.tick(60)
