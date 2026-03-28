@@ -13,7 +13,7 @@ class Layout:
 
         # Reserve fixed fractions for borders, then fit 8 tiles
         bt_est = max(50, win_h // 9)
-        bb_est = max(40, win_h // 11)
+        bb_est = max(70, win_h // 7)
         bs_est = max(20, win_w // 24)
 
         tile_h = (win_h - bt_est - bb_est) // 8
@@ -23,7 +23,11 @@ class Layout:
         self.tile = tile
         self.border_side = max(20, tile // 2)
         self.border_top = max(50, tile + 5)
-        self.border_bottom = max(40, tile // 2)
+
+        # Bottom border must fit the coordinate letters row and the notation bar
+        bar_h = max(24, tile // 3)
+        letters_h = max(24, tile // 2)
+        self.border_bottom = letters_h + bar_h + 12
 
         self.board_px = tile * 8
         self.board_w = self.board_px + self.border_side * 2
@@ -31,10 +35,12 @@ class Layout:
         self.window_w = self.board_w + self.panel_w
         self.window_h = self.board_px + self.border_top + self.border_bottom
 
-        # Notation bar inside the bottom border
-        bar_h = max(24, tile // 3)
+        # Coordinate letters sit in the upper portion of the bottom border
+        self.coord_bottom_y = self.border_top + self.board_px + letters_h // 2
+
+        # Notation bar sits below the coordinate letters
         self.bar_h = bar_h
-        self.bar_y = self.board_px + self.border_top + (self.border_bottom - bar_h) // 2
+        self.bar_y = self.border_top + self.board_px + letters_h + (self.border_bottom - letters_h - bar_h) // 2
         self.bar_x = self.border_side
         self.bar_w = self.board_px
 

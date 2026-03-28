@@ -9,6 +9,7 @@ from constants import (
     SELECT_COLOR,
     LAST_MOVE_COLOR,
     CURSOR_COLOR,
+    PREVIEW_COLOR,
     BORDER_BG,
     COORD_COLOR,
     PANEL_BG,
@@ -120,7 +121,7 @@ def draw_coordinates(screen, fonts, flipped, L):
         x = L.border_side + col * L.tile + L.tile // 2
         for y in [
             L.border_top // 2 + L.border_top // 4,
-            L.border_top + 8 * L.tile + L.border_bottom // 2,
+            L.coord_bottom_y,
         ]:
             s = f.render(letter, True, COORD_COLOR)
             screen.blit(s, s.get_rect(center=(x, y)))
@@ -131,7 +132,7 @@ def draw_coordinates(screen, fonts, flipped, L):
             screen.blit(s, s.get_rect(center=(x, y)))
 
 
-def draw_highlights(screen, selected, moves, last_move_coords, cursor, flipped, L):
+def draw_highlights(screen, selected, moves, last_move_coords, cursor, flipped, L, preview_move=None):
     ov = pygame.Surface((L.tile, L.tile), pygame.SRCALPHA)
     if last_move_coords:
         fr, fc, tr, tc = last_move_coords
@@ -147,6 +148,20 @@ def draw_highlights(screen, selected, moves, last_move_coords, cursor, flipped, 
     for r, c in moves:
         vr, vc = board_to_view(r, c, flipped)
         screen.blit(ov, (L.border_side + vc * L.tile, L.border_top + vr * L.tile))
+    if preview_move:
+        from_sq, to_sq = preview_move
+        ov.fill(PREVIEW_COLOR)
+        for r, c in [from_sq, to_sq]:
+            vr, vc = board_to_view(r, c, flipped)
+            screen.blit(ov, (L.border_side + vc * L.tile, L.border_top + vr * L.tile))
+        # Draw a border around the destination square
+        vr, vc = board_to_view(to_sq[0], to_sq[1], flipped)
+        pygame.draw.rect(
+            screen,
+            (220, 140, 20),
+            (L.border_side + vc * L.tile, L.border_top + vr * L.tile, L.tile, L.tile),
+            3,
+        )
     if cursor:
         vr, vc = board_to_view(cursor[0], cursor[1], flipped)
         ov.fill(CURSOR_COLOR)

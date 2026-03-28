@@ -230,6 +230,10 @@ def main():
                             else:
                                 reload_strings(k)
                                 pygame.display.set_caption(S.WINDOW_TITLE)
+                                if board is not None:
+                                    status_msg, game_over = post_move_status(
+                                        board, turn, last_move, castling_rights
+                                    )
                                 lang_open = False
                             picked_lang = True
                             break
@@ -262,6 +266,9 @@ def main():
                             else:
                                 reload_strings(k)
                                 pygame.display.set_caption(S.WINDOW_TITLE)
+                                status_msg, game_over = post_move_status(
+                                    board, turn, last_move, castling_rights
+                                )
                                 lang_open = False
                             picked_lang = True
                             break
@@ -478,8 +485,14 @@ def main():
         else:
             draw_board(screen, L)
             if board:
+                bar_preview = None
+                if bar_text and not game_over and not paused:
+                    bar_preview = parse_algebraic(
+                        bar_text, board, turn, last_move, castling_rights
+                    )
                 draw_highlights(
-                    screen, selected, possible_moves, last_move, cursor, flipped, L
+                    screen, selected, possible_moves, last_move, cursor, flipped, L,
+                    preview_move=bar_preview,
                 )
             draw_coordinates(screen, fonts, flipped, L)
 
