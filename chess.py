@@ -11,10 +11,18 @@ import pygame
 TILE_SIZE = 80
 BOARD_SIZE = 8
 BORDER_SIDE = 40  # left / right / bottom padding
-BORDER_TOP = 70  # extra top padding to fit the status label
+BORDER_TOP = 85  # extra top padding to fit the status label
 BORDER = BORDER_SIDE  # kept for coordinate helpers that use BORDER
-WINDOW_W = TILE_SIZE * BOARD_SIZE + BORDER_SIDE * 2  # 720
-WINDOW_H = TILE_SIZE * BOARD_SIZE + BORDER_SIDE + BORDER_TOP  # 750
+PANEL_W = 200  # width of the move history panel on the right
+BOARD_W = TILE_SIZE * BOARD_SIZE + BORDER_SIDE * 2  # 720  (board area)
+WINDOW_W = BOARD_W + PANEL_W  # 920
+WINDOW_H = TILE_SIZE * BOARD_SIZE + BORDER_SIDE + BORDER_TOP  # 765
+
+PANEL_BG = (28, 28, 28)
+PANEL_HEADER = (60, 60, 60)
+PANEL_TEXT_W = (240, 240, 240)  # white move text
+PANEL_TEXT_B = (180, 180, 180)  # black move text
+PANEL_LINE_H = 22  # pixels per move row
 
 WHITE_TILE = (240, 217, 181)
 BLACK_TILE = (181, 136, 99)
@@ -282,19 +290,25 @@ def promote_pawns(board, color):
 def execute_move(board, selected, dest, last_move, castling_rights, turn):
     """
     Applies the move to board in-place.
-    Returns updated (last_move, castling_rights).
+    Returns (last_move, castling_rights, notation_str).
     """
     fr, fc = selected
     tr, tc = dest
     moving = board[fr][fc]
     mtype = piece_type(moving)
     mcolor = piece_color(moving)
+    captured = board[tr][tc]
+
+    is_castling_kingside = mtype == "king" and fc == 4 and tc == 6
+    is_castling_queenside = mtype == "king" and fc == 4 and tc == 2
+    is_en_passant = False
 
     # En-passant capture
     if mtype == "pawn" and last_move:
         lfr, lfc, ltr, ltc = last_move
         if tc == ltc and tr != ltr and board[ltr][ltc] == f"{opponent(mcolor)}_pawn":
             board[ltr][ltc] = None
+            is_en_passant = True
 
     board[tr][tc] = moving
     board[fr][fc] = None
@@ -319,7 +333,30 @@ def execute_move(board, selected, dest, last_move, castling_rights, turn):
 
     last_move = (fr, fc, tr, tc)
     promote_pawns(board, mcolor)
-    return last_move, castling_rights
+
+    # Determine check / checkmate for notation suffix
+    opp = opponent(mcolor)
+    gives_check = is_in_check(board, opp)
+    gives_checkmate = gives_check and not has_any_legal_move(
+        board, opp, last_move, castling_rights
+    )
+
+    notation = move_to_notation(
+        board,
+        fr,
+        fc,
+        tr,
+        tc,
+        moving,
+        captured,
+        is_castling_kingside,
+        is_castling_queenside,
+        is_en_passant,
+        gives_check,
+        gives_checkmate,
+    )
+
+    return last_move, castling_rights, notation
 
 
 # ---------------------------------------------------------------------------
@@ -342,10 +379,12 @@ def draw_board(screen):
             )
 
 
-def draw_coordinates(screen, font):
-    for col, letter in enumerate(FILES):
+def draw_coordinates(screen, font, flipped):
+    files = FILES if not flipped else FILES[::-1]
+    ranks = RANKS if not flipped else RANKS[::-1]
+
+    for col, letter in enumerate(files):
         x = BORDER_SIDE + col * TILE_SIZE + TILE_SIZE // 2
-        # just below the top border, and just below the board
         for y in [
             BORDER_TOP // 2 + 20,
             BORDER_TOP + BOARD_SIZE * TILE_SIZE + BORDER_SIDE // 2,
@@ -353,7 +392,7 @@ def draw_coordinates(screen, font):
             s = font.render(letter, True, COORD_COLOR)
             screen.blit(s, s.get_rect(center=(x, y)))
 
-    for row, number in enumerate(RANKS):
+    for row, number in enumerate(ranks):
         y = BORDER_TOP + row * TILE_SIZE + TILE_SIZE // 2
         for x in [
             BORDER_SIDE // 2,
@@ -363,34 +402,40 @@ def draw_coordinates(screen, font):
             screen.blit(s, s.get_rect(center=(x, y)))
 
 
-def draw_highlights(screen, selected, moves):
+def draw_highlights(screen, selected, moves, flipped):
     overlay = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
     if selected:
         overlay.fill(SELECT_COLOR)
-        r, c = selected
-        screen.blit(overlay, (BORDER_SIDE + c * TILE_SIZE, BORDER_TOP + r * TILE_SIZE))
+        vr, vc = board_to_view(selected[0], selected[1], flipped)
+        screen.blit(
+            overlay, (BORDER_SIDE + vc * TILE_SIZE, BORDER_TOP + vr * TILE_SIZE)
+        )
     overlay.fill(HIGHLIGHT_COLOR)
     for r, c in moves:
-        screen.blit(overlay, (BORDER_SIDE + c * TILE_SIZE, BORDER_TOP + r * TILE_SIZE))
+        vr, vc = board_to_view(r, c, flipped)
+        screen.blit(
+            overlay, (BORDER_SIDE + vc * TILE_SIZE, BORDER_TOP + vr * TILE_SIZE)
+        )
 
 
-def draw_pieces(screen, board, pieces, skip=None):
+def draw_pieces(screen, board, pieces, flipped, skip=None):
     for row in range(BOARD_SIZE):
         for col in range(BOARD_SIZE):
             piece = board[row][col]
             if piece and piece in pieces and (row, col) != skip:
+                vr, vc = board_to_view(row, col, flipped)
                 screen.blit(
                     pieces[piece],
-                    (BORDER_SIDE + col * TILE_SIZE, BORDER_TOP + row * TILE_SIZE),
+                    (BORDER_SIDE + vc * TILE_SIZE, BORDER_TOP + vr * TILE_SIZE),
                 )
 
 
 def draw_status(screen, font, message):
     s = font.render(message, True, (255, 220, 50))
-    screen.blit(s, s.get_rect(center=(WINDOW_W // 2, BORDER_TOP // 2)))
+    screen.blit(s, s.get_rect(center=(BOARD_W // 2, BORDER_TOP // 2 - 8)))
 
 
-def draw_fallback_pieces(screen, board, font_large, skip=None):
+def draw_fallback_pieces(screen, board, font_large, flipped, skip=None):
     """Render Unicode chess symbols when SVGs are missing."""
     symbols = {
         "white_king": "♔",
@@ -410,25 +455,158 @@ def draw_fallback_pieces(screen, board, font_large, skip=None):
         for col in range(BOARD_SIZE):
             piece = board[row][col]
             if piece and (row, col) != skip:
+                vr, vc = board_to_view(row, col, flipped)
                 sym = symbols.get(piece, "?")
                 surf = font_large.render(sym, True, (30, 30, 30))
                 rect = surf.get_rect(
                     center=(
-                        BORDER_SIDE + col * TILE_SIZE + TILE_SIZE // 2,
-                        BORDER_TOP + row * TILE_SIZE + TILE_SIZE // 2,
+                        BORDER_SIDE + vc * TILE_SIZE + TILE_SIZE // 2,
+                        BORDER_TOP + vr * TILE_SIZE + TILE_SIZE // 2,
                     )
                 )
                 screen.blit(surf, rect)
 
 
-# ---------------------------------------------------------------------------
-# Coordinate helper
-# ---------------------------------------------------------------------------
-def pixel_to_cell(mx, my):
-    col = (mx - BORDER_SIDE) // TILE_SIZE
-    row = (my - BORDER_TOP) // TILE_SIZE
-    if 0 <= row < 8 and 0 <= col < 8:
-        return row, col
+def move_to_notation(
+    board_before,
+    fr,
+    fc,
+    tr,
+    tc,
+    moving,
+    captured,
+    is_castling_kingside,
+    is_castling_queenside,
+    is_en_passant,
+    gives_check,
+    gives_checkmate,
+):
+    """Convert a move to standard algebraic notation."""
+    if is_castling_kingside:
+        note = "O-O"
+    elif is_castling_queenside:
+        note = "O-O-O"
+    else:
+        ptype = piece_type(moving)
+        piece_sym = {
+            "king": "K",
+            "queen": "Q",
+            "rook": "R",
+            "bishop": "B",
+            "knight": "N",
+            "pawn": "",
+        }[ptype]
+        dest_file = FILES[tc]
+        dest_rank = str(8 - tr)
+        if ptype == "pawn":
+            if captured or is_en_passant:
+                note = f"{FILES[fc]}x{dest_file}{dest_rank}"
+            else:
+                note = f"{dest_file}{dest_rank}"
+        else:
+            capture = "x" if captured else ""
+            note = f"{piece_sym}{capture}{dest_file}{dest_rank}"
+
+    if gives_checkmate:
+        note += "#"
+    elif gives_check:
+        note += "+"
+    return note
+
+
+def draw_move_panel(screen, font_panel, font_header, move_history, scroll_offset):
+    """Draw the move history panel on the right side of the window."""
+    panel_rect = pygame.Rect(BOARD_W, 0, PANEL_W, WINDOW_H)
+    pygame.draw.rect(screen, PANEL_BG, panel_rect)
+
+    # Header
+    header_rect = pygame.Rect(BOARD_W, 0, PANEL_W, BORDER_TOP)
+    pygame.draw.rect(screen, PANEL_HEADER, header_rect)
+    title = font_header.render("Moves", True, (255, 220, 50))
+    screen.blit(title, title.get_rect(center=(BOARD_W + PANEL_W // 2, BORDER_TOP // 2)))
+
+    # Divider line
+    pygame.draw.line(
+        screen, (80, 80, 80), (BOARD_W, BORDER_TOP), (WINDOW_W, BORDER_TOP), 1
+    )
+
+    # Column headers
+    col_w = font_panel.render("W", True, PANEL_TEXT_W)
+    col_b = font_panel.render("B", True, PANEL_TEXT_B)
+    col_x_num = BOARD_W + 10
+    col_x_w = BOARD_W + 40
+    col_x_b = BOARD_W + 120
+    y_header = BORDER_TOP + 8
+    screen.blit(font_panel.render("#", True, (140, 140, 140)), (col_x_num, y_header))
+    screen.blit(font_panel.render("White", True, PANEL_TEXT_W), (col_x_w, y_header))
+    screen.blit(font_panel.render("Black", True, PANEL_TEXT_B), (col_x_b, y_header))
+    pygame.draw.line(
+        screen,
+        (60, 60, 60),
+        (BOARD_W + 5, y_header + PANEL_LINE_H - 2),
+        (WINDOW_W - 5, y_header + PANEL_LINE_H - 2),
+        1,
+    )
+
+    # Move rows  (pair white + black per line)
+    list_top = BORDER_TOP + PANEL_LINE_H + 14
+    visible_h = WINDOW_H - list_top - 10
+    max_rows = visible_h // PANEL_LINE_H
+
+    # Group flat move list into pairs  [(white, black_or_None), …]
+    pairs = []
+    for i in range(0, len(move_history), 2):
+        w = move_history[i]
+        b = move_history[i + 1] if i + 1 < len(move_history) else None
+        pairs.append((w, b))
+
+    # Auto-scroll to keep latest move visible
+    total_rows = len(pairs)
+    scroll_offset = max(0, total_rows - max_rows)
+
+    visible_pairs = pairs[scroll_offset:]
+    for idx, (w_move, b_move) in enumerate(visible_pairs):
+        y = list_top + idx * PANEL_LINE_H
+        if y + PANEL_LINE_H > WINDOW_H - 5:
+            break
+        move_num = scroll_offset + idx + 1
+        # Highlight the last move row
+        is_last = scroll_offset + idx == total_rows - 1
+        if is_last:
+            pygame.draw.rect(
+                screen, (50, 50, 60), (BOARD_W + 4, y - 2, PANEL_W - 8, PANEL_LINE_H)
+            )
+
+        screen.blit(
+            font_panel.render(f"{move_num}.", True, (120, 120, 120)), (col_x_num, y)
+        )
+        screen.blit(font_panel.render(w_move, True, PANEL_TEXT_W), (col_x_w, y))
+        if b_move:
+            screen.blit(font_panel.render(b_move, True, PANEL_TEXT_B), (col_x_b, y))
+
+    return scroll_offset
+
+
+def view_to_board(vrow, vcol, flipped):
+    """Convert a visual grid position to a logical board position."""
+    if flipped:
+        return 7 - vrow, 7 - vcol
+    return vrow, vcol
+
+
+def board_to_view(row, col, flipped):
+    """Convert a logical board position to a visual grid position."""
+    if flipped:
+        return 7 - row, 7 - col
+    return row, col
+
+
+def pixel_to_cell(mx, my, flipped):
+    """Return logical board (row, col) for a mouse position, or None."""
+    vcol = (mx - BORDER_SIDE) // TILE_SIZE
+    vrow = (my - BORDER_TOP) // TILE_SIZE
+    if 0 <= vrow < 8 and 0 <= vcol < 8:
+        return view_to_board(vrow, vcol, flipped)
     return None
 
 
@@ -442,6 +620,8 @@ def main():
     clock = pygame.time.Clock()
     font = pygame.font.SysFont("Arial", 24, bold=True)
     font_large = pygame.font.SysFont("Segoe UI Symbol", 52)
+    font_panel = pygame.font.SysFont("Arial", 15)
+    font_header = pygame.font.SysFont("Arial", 20, bold=True)
 
     pieces = load_pieces(ASSET_DIR, TILE_SIZE)
     use_svg = bool(pieces)  # fall back to Unicode symbols if nothing loaded
@@ -459,6 +639,9 @@ def main():
     }
     status_msg = "White's turn"
     game_over = False
+    flipped = False  # False = white at bottom, True = black at bottom
+    move_history = []  # flat list of notation strings [w1, b1, w2, b2, …]
+    scroll_offset = 0
 
     # Drag state
     dragging = False
@@ -480,7 +663,7 @@ def main():
                 and event.button == 1
                 and not game_over
             ):
-                cell = pixel_to_cell(mx, my)
+                cell = pixel_to_cell(mx, my, flipped)
                 if cell is None:
                     continue
                 r, c = cell
@@ -488,9 +671,10 @@ def main():
 
                 if selected:
                     if cell in possible_moves:
-                        last_move, castling_rights = execute_move(
+                        last_move, castling_rights, notation = execute_move(
                             board, selected, cell, last_move, castling_rights, turn
                         )
+                        move_history.append(notation)
                         turn = opponent(turn)
                         selected = None
                         possible_moves = []
@@ -542,11 +726,12 @@ def main():
                 and not game_over
             ):
                 dragging = False
-                cell = pixel_to_cell(mx, my)
+                cell = pixel_to_cell(mx, my, flipped)
                 if cell and selected and cell in possible_moves and cell != selected:
-                    last_move, castling_rights = execute_move(
+                    last_move, castling_rights, notation = execute_move(
                         board, selected, cell, last_move, castling_rights, turn
                     )
+                    move_history.append(notation)
                     turn = opponent(turn)
                     selected = None
                     possible_moves = []
@@ -567,14 +752,14 @@ def main():
         # Render
         # --------------------------------------------------------------------
         draw_board(screen)
-        draw_highlights(screen, selected, possible_moves)
-        draw_coordinates(screen, font)
+        draw_highlights(screen, selected, possible_moves, flipped)
+        draw_coordinates(screen, font, flipped)
 
         skip_cell = drag_from if dragging else None
         if use_svg:
-            draw_pieces(screen, board, pieces, skip=skip_cell)
+            draw_pieces(screen, board, pieces, flipped, skip=skip_cell)
         else:
-            draw_fallback_pieces(screen, board, font_large, skip=skip_cell)
+            draw_fallback_pieces(screen, board, font_large, flipped, skip=skip_cell)
 
         # Dragged piece follows cursor
         if dragging and drag_piece_key:
@@ -602,6 +787,9 @@ def main():
                 screen.blit(surf, surf.get_rect(center=drag_pos))
 
         draw_status(screen, font, status_msg)
+        scroll_offset = draw_move_panel(
+            screen, font_panel, font_header, move_history, scroll_offset
+        )
         pygame.display.flip()
         clock.tick(60)
 
