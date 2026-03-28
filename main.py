@@ -246,26 +246,45 @@ def main():
             if paused and not game_over:
                 if event.type == pygame.MOUSEMOTION:
                     pause_hovered = None
+                    lang_hovered = None
                     for k, rect in pause_rects.items():
                         if rect.collidepoint(mx, my):
                             pause_hovered = k
-                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                    for k, rect in pause_rects.items():
+                    for k, rect in lang_rects.items():
                         if rect.collidepoint(mx, my):
-                            if k == "resume":
-                                paused = False
-                            elif k == "restart":
-                                new_game(mode)
-                            elif k == "menu":
-                                mode = MODE_MENU
-                            elif k == "fullscreen":
-                                toggle_fullscreen()
-                            elif k == "quit":
-                                pygame.quit()
-                                sys.exit()
+                            lang_hovered = k
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    picked_lang = False
+                    for k, rect in lang_rects.items():
+                        if rect.collidepoint(mx, my):
+                            if k == "toggle":
+                                lang_open = not lang_open
+                            else:
+                                reload_strings(k)
+                                pygame.display.set_caption(S.WINDOW_TITLE)
+                                lang_open = False
+                            picked_lang = True
                             break
+                    if not picked_lang:
+                        lang_open = False
+                        for k, rect in pause_rects.items():
+                            if rect.collidepoint(mx, my):
+                                if k == "resume":
+                                    paused = False
+                                elif k == "restart":
+                                    new_game(mode)
+                                elif k == "menu":
+                                    mode = MODE_MENU
+                                elif k == "fullscreen":
+                                    toggle_fullscreen()
+                                elif k == "quit":
+                                    pygame.quit()
+                                    sys.exit()
+                                break
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                     paused = False
+                    lang_open = False
+                    lang_hovered = None
                 continue
 
             # ── Game-over overlay ─────────────────────────────────────────
@@ -300,6 +319,8 @@ def main():
                     else:
                         paused = True
                         pause_hovered = None
+                        lang_open = False
+                        lang_hovered = None
                     continue
 
                 # ── Notation bar ──────────────────────────────────────────
@@ -499,6 +520,10 @@ def main():
                 )
             elif paused:
                 pause_rects = draw_pause_menu(screen, fonts, pause_hovered, L)
+                lang_rects = draw_lang_picker(
+                    screen, fonts, flags, locales,
+                    strings.CURRENT_LOCALE, lang_open, lang_hovered, L
+                )
 
         pygame.display.flip()
         clock.tick(60)

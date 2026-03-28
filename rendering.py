@@ -468,7 +468,8 @@ def draw_lang_picker(screen, fonts, flags, locales, current, open_, hovered, L):
     bg = (80, 80, 110) if hovered == "toggle" else (50, 50, 75)
     pygame.draw.rect(screen, bg, toggle_rect, border_radius=6)
     pygame.draw.rect(screen, (120, 120, 160), toggle_rect, 1, border_radius=6)
-    _draw_flag_item(screen, fonts, flags, current, current,
+    current_name = next((name for code, name in locales if code == current), current)
+    _draw_flag_item(screen, fonts, flags, current, current_name,
                     toggle_rect.x, toggle_rect.y, drop_w, item_h)
 
     if not open_:
