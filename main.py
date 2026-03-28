@@ -20,14 +20,10 @@ from constants import (
     MODE_AI,
     MODE_LEARNING,
 )
-from strings import (
-    WINDOW_TITLE,
-    BADGE_PVP, BADGE_AI, BADGE_LEARNING,
-    STATUS_WHITE_TURN,
-    TIPS,
-)
+import strings
+from strings import S, reload as reload_strings, available_locales
 from layout import Layout
-from pieces import load_pieces, reload_pieces
+from pieces import load_pieces, reload_pieces, load_flags
 from board import (
     starting_board,
     piece_color,
@@ -54,6 +50,7 @@ from rendering import (
     draw_menu,
     draw_pause_menu,
     draw_gameover_overlay,
+    draw_lang_picker,
     PIECE_SYMBOLS,
 )
 
@@ -63,7 +60,7 @@ def main():
 
     INIT_W, INIT_H = 960, 780
     screen = pygame.display.set_mode((INIT_W, INIT_H), pygame.RESIZABLE)
-    pygame.display.set_caption(WINDOW_TITLE)
+    pygame.display.set_caption(S.WINDOW_TITLE)
     clock = pygame.time.Clock()
 
     fullscreen = False
@@ -72,6 +69,12 @@ def main():
     pieces = load_pieces(ASSET_DIR, L.tile)
     use_svg = bool(pieces)
     last_tile = L.tile
+
+    locales = available_locales()
+    flags = load_flags(ASSET_DIR, locales)
+    lang_open = False
+    lang_hovered = None
+    lang_rects = {}
 
     # Resize debounce: apply layout only after the user stops dragging
     pending_size = None  # (w,h) waiting to be applied
@@ -113,7 +116,7 @@ def main():
             "white": {"kingside": True, "queenside": True},
             "black": {"kingside": True, "queenside": True},
         }
-        status_msg = STATUS_WHITE_TURN
+        status_msg = S.STATUS_WHITE_TURN
         game_over = False
         move_history = []
         flipped = False
@@ -210,15 +213,33 @@ def main():
             if mode == MODE_MENU:
                 if event.type == pygame.MOUSEMOTION:
                     menu_hovered = None
+                    lang_hovered = None
                     for m, rect in menu_rects.items():
                         if rect.collidepoint(mx, my):
                             menu_hovered = m
-                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                    for m, rect in menu_rects.items():
+                    for k, rect in lang_rects.items():
                         if rect.collidepoint(mx, my):
-                            mode = m
-                            new_game(m)
+                            lang_hovered = k
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    # Lang picker has priority
+                    picked_lang = False
+                    for k, rect in lang_rects.items():
+                        if rect.collidepoint(mx, my):
+                            if k == "toggle":
+                                lang_open = not lang_open
+                            else:
+                                reload_strings(k)
+                                pygame.display.set_caption(S.WINDOW_TITLE)
+                                lang_open = False
+                            picked_lang = True
                             break
+                    if not picked_lang:
+                        lang_open = False
+                        for m, rect in menu_rects.items():
+                            if rect.collidepoint(mx, my):
+                                mode = m
+                                new_game(m)
+                                break
                 continue
 
             # ── Pause menu ────────────────────────────────────────────────
@@ -329,7 +350,7 @@ def main():
                     nc = max(0, min(7, cursor[1] + dc))
                     cursor = (nr, nc)
                     if mode == MODE_LEARNING and board[nr][nc]:
-                        tip_text = TIPS.get(piece_type(board[nr][nc]), "")
+                        tip_text = S.TIPS.get(piece_type(board[nr][nc]), "")
                     else:
                         tip_text = ""
                     continue
@@ -347,7 +368,7 @@ def main():
                                 board, r, c, last_move, castling_rights
                             )
                             if mode == MODE_LEARNING:
-                                tip_text = TIPS.get(piece_type(clicked), "")
+                                tip_text = S.TIPS.get(piece_type(clicked), "")
                         else:
                             selected = None
                             possible_moves = []
@@ -358,7 +379,7 @@ def main():
                                 board, r, c, last_move, castling_rights
                             )
                             if mode == MODE_LEARNING:
-                                tip_text = TIPS.get(piece_type(clicked), "")
+                                tip_text = S.TIPS.get(piece_type(clicked), "")
 
             # ── Mouse ─────────────────────────────────────────────────────
             if not block:
@@ -382,7 +403,7 @@ def main():
                             drag_from = cell
                             drag_pos = (mx, my)
                             if mode == MODE_LEARNING:
-                                tip_text = TIPS.get(piece_type(clicked), "")
+                                tip_text = S.TIPS.get(piece_type(clicked), "")
                         else:
                             selected = None
                             possible_moves = []
@@ -398,14 +419,14 @@ def main():
                             drag_from = cell
                             drag_pos = (mx, my)
                             if mode == MODE_LEARNING:
-                                tip_text = TIPS.get(piece_type(clicked), "")
+                                tip_text = S.TIPS.get(piece_type(clicked), "")
 
                 if event.type == pygame.MOUSEMOTION:
                     drag_pos = (mx, my)
                     if mode == MODE_LEARNING and not selected:
                         cell = pixel_to_cell(mx, my, flipped, L)
                         if cell and board[cell[0]][cell[1]]:
-                            tip_text = TIPS.get(
+                            tip_text = S.TIPS.get(
                                 piece_type(board[cell[0]][cell[1]]), ""
                             )
                         else:
@@ -429,6 +450,10 @@ def main():
         # ── Render ────────────────────────────────────────────────────────
         if mode == MODE_MENU:
             menu_rects = draw_menu(screen, fonts, menu_hovered, L)
+            lang_rects = draw_lang_picker(
+                screen, fonts, flags, locales,
+                strings.CURRENT_LOCALE, lang_open, lang_hovered, L
+            )
         else:
             draw_board(screen, L)
             if board:
@@ -454,7 +479,7 @@ def main():
                     )
                     screen.blit(surf, surf.get_rect(center=drag_pos))
 
-            badges = {"pvp": BADGE_PVP, "ai": BADGE_AI, "learning": BADGE_LEARNING}
+            badges = {"pvp": S.BADGE_PVP, "ai": S.BADGE_AI, "learning": S.BADGE_LEARNING}
             badge = fonts["sub"].render(badges.get(mode, ""), True, (120, 120, 120))
             screen.blit(badge, (L.board_w - badge.get_width() - 8, 6))
 

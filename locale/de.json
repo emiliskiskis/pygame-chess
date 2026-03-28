@@ -1,0 +1,54 @@
+{
+  "_locale": "de",
+  "_language": "Deutsch",
+
+  "window_title": "Schach",
+
+  "menu_title": "Schach",
+  "menu_subtitle": "Wähle einen Spielmodus",
+  "menu_hint": "F11 Vollbild   |   Pfeiltasten + Leertaste: Cursor   |   Notation in der Leiste unter dem Brett eingeben",
+
+  "menu_pvp_label": "Spieler gegen Spieler",
+  "menu_pvp_desc": "Zwei Menschen spielen am selben Computer",
+  "menu_ai_label": "Spieler gegen KI",
+  "menu_ai_desc": "Spielen Sie gegen den Computer (Schwarz)",
+  "menu_learning_label": "Lernmodus",
+  "menu_learning_desc": "Hinweise, Tipps und Zugerklärungen",
+
+  "badge_pvp": "SgS",
+  "badge_ai": "vs KI",
+  "badge_learning": "Lernen",
+
+  "panel_header": "Züge",
+  "panel_col_number": "Nr.",
+  "panel_col_white": "Weiß",
+  "panel_col_black": "Schwarz",
+
+  "notation_label": "Zug: ",
+  "notation_hint": "Enter zum Bestätigen  |  Esc löscht",
+
+  "pause_title": "Pausiert",
+  "pause_resume": "Fortsetzen",
+  "pause_restart": "Neu starten",
+  "pause_menu": "Hauptmenü",
+  "pause_fullscreen": "Vollbild umschalten",
+  "pause_quit": "Beenden",
+  "pause_esc_hint": "Escape zum Fortsetzen",
+
+  "over_play_again": "Nochmal spielen",
+  "over_menu": "Hauptmenü",
+  "over_quit": "Beenden",
+
+  "status_turn": "{player} ist am Zug",
+  "status_check": "{player} steht im Schach!",
+  "status_checkmate": "Schachmatt! {winner} gewinnt!",
+  "status_stalemate": "Patt! Unentschieden.",
+  "status_white_turn": "Weiß ist am Zug",
+
+  "tip_pawn":   "Bauern ziehen 1 Feld vor (2 vom Start) und schlagen diagonal.",
+  "tip_knight": "Springer ziehen im L-förmigen Weg und können über Figuren springen.",
+  "tip_bishop": "Läufer gleiten diagonal beliebig viele Felder.",
+  "tip_rook":   "Türme gleiten horizontal oder vertikal beliebig viele Felder.",
+  "tip_queen":  "Die Dame vereint Turm und Läufer – die stärkste Figur.",
+  "tip_king":   "Der König zieht 1 Feld in jede Richtung. Schütze deinen!"
+}

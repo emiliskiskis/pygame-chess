@@ -1,7 +1,7 @@
 import copy
 
 from constants import FILES
-from strings import STATUS_CHECKMATE, STATUS_STALEMATE, STATUS_CHECK, STATUS_TURN
+from strings import S
 
 
 def starting_board():
@@ -251,8 +251,8 @@ def execute_move(board, selected, dest, last_move, castling_rights, turn):
 def post_move_status(board, turn, last_move, castling_rights):
     if not has_any_legal_move(board, turn, last_move, castling_rights):
         if is_in_check(board, turn):
-            return STATUS_CHECKMATE.format(winner=opponent(turn).capitalize()), True
-        return STATUS_STALEMATE, True
+            return S.STATUS_CHECKMATE.format(winner=opponent(turn).capitalize()), True
+        return S.STATUS_STALEMATE, True
     if is_in_check(board, turn):
-        return STATUS_CHECK.format(player=turn.capitalize()), False
-    return STATUS_TURN.format(player=turn.capitalize()), False
+        return S.STATUS_CHECK.format(player=turn.capitalize()), False
+    return S.STATUS_TURN.format(player=turn.capitalize()), False

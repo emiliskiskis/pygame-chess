@@ -1,0 +1,54 @@
+{
+  "_locale": "fr",
+  "_language": "Français",
+
+  "window_title": "Échecs",
+
+  "menu_title": "Échecs",
+  "menu_subtitle": "Choisissez un mode de jeu",
+  "menu_hint": "F11 plein écran   |   Flèches + Espace : curseur   |   Saisir la notation dans la barre sous l'échiquier",
+
+  "menu_pvp_label": "Joueur contre Joueur",
+  "menu_pvp_desc": "Deux humains jouent sur le même ordinateur",
+  "menu_ai_label": "Joueur contre IA",
+  "menu_ai_desc": "Jouez contre l'ordinateur (noirs)",
+  "menu_learning_label": "Mode Apprentissage",
+  "menu_learning_desc": "Indices, conseils et explications des coups",
+
+  "badge_pvp": "JcJ",
+  "badge_ai": "vs IA",
+  "badge_learning": "Apprentissage",
+
+  "panel_header": "Coups",
+  "panel_col_number": "N°",
+  "panel_col_white": "Blancs",
+  "panel_col_black": "Noirs",
+
+  "notation_label": "Coup : ",
+  "notation_hint": "Entrée pour valider  |  Échap efface",
+
+  "pause_title": "En pause",
+  "pause_resume": "Reprendre",
+  "pause_restart": "Recommencer",
+  "pause_menu": "Menu principal",
+  "pause_fullscreen": "Basculer plein écran",
+  "pause_quit": "Quitter",
+  "pause_esc_hint": "Échap pour reprendre",
+
+  "over_play_again": "Rejouer",
+  "over_menu": "Menu principal",
+  "over_quit": "Quitter",
+
+  "status_turn": "Tour de {player}",
+  "status_check": "{player} est en échec !",
+  "status_checkmate": "Échec et mat ! {winner} gagne !",
+  "status_stalemate": "Pat ! Match nul.",
+  "status_white_turn": "Tour des blancs",
+
+  "tip_pawn":   "Les pions avancent d'une case (2 au départ) et capturent en diagonale.",
+  "tip_knight": "Les cavaliers se déplacent en L et peuvent sauter par-dessus les pièces.",
+  "tip_bishop": "Les fous glissent en diagonale sur autant de cases que souhaité.",
+  "tip_rook":   "Les tours glissent horizontalement ou verticalement sur autant de cases que souhaité.",
+  "tip_queen":  "La reine combine tour et fou – la pièce la plus puissante.",
+  "tip_king":   "Le roi se déplace d'une case dans n'importe quelle direction. Protégez le vôtre !"
+}

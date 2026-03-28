@@ -1,0 +1,54 @@
+{
+  "_locale": "lt",
+  "_language": "Lietuvių",
+
+  "window_title": "Šachmatai",
+
+  "menu_title": "Šachmatai",
+  "menu_subtitle": "Pasirinkite žaidimo režimą",
+  "menu_hint": "F11 pilnas ekranas   |   Rodyklės + Tarpas: žymeklis   |   Įveskite notaciją žemiau lentos",
+
+  "menu_pvp_label": "Žaidėjas prieš žaidėją",
+  "menu_pvp_desc": "Du žmonės žaidžia tame pačiame kompiuteryje",
+  "menu_ai_label": "Žaidėjas prieš DI",
+  "menu_ai_desc": "Žaiskite prieš kompiuterį (juodieji)",
+  "menu_learning_label": "Mokymosi režimas",
+  "menu_learning_desc": "Užuominos, patarimai ir ėjimų paaiškinimai",
+
+  "badge_pvp": "ŽpŽ",
+  "badge_ai": "prieš DI",
+  "badge_learning": "Mokymasis",
+
+  "panel_header": "Ėjimai",
+  "panel_col_number": "Nr.",
+  "panel_col_white": "Baltieji",
+  "panel_col_black": "Juodieji",
+
+  "notation_label": "Ėjimas: ",
+  "notation_hint": "Enter – patvirtinti  |  Esc – išvalyti",
+
+  "pause_title": "Pristabdyta",
+  "pause_resume": "Tęsti",
+  "pause_restart": "Pradėti iš naujo",
+  "pause_menu": "Pagrindinis meniu",
+  "pause_fullscreen": "Perjungti pilną ekraną",
+  "pause_quit": "Išeiti",
+  "pause_esc_hint": "Escape – tęsti",
+
+  "over_play_again": "Žaisti dar kartą",
+  "over_menu": "Pagrindinis meniu",
+  "over_quit": "Išeiti",
+
+  "status_turn": "{player} ėjimas",
+  "status_check": "{player} yra šachas!",
+  "status_checkmate": "Šach ir mat! {winner} laimi!",
+  "status_stalemate": "Patas! Lygiosios.",
+  "status_white_turn": "Baltųjų ėjimas",
+
+  "tip_pawn":   "Pėstininkai juda 1 laukelį pirmyn (2 iš pradžių) ir kerta įstrižai.",
+  "tip_knight": "Žirgai juda L formos keliu ir gali peršokti per figūras.",
+  "tip_bishop": "Rikiai slysta įstrižai bet kiek laukelių.",
+  "tip_rook":   "Bokštai slysta horizontaliai arba vertikaliai bet kiek laukelių.",
+  "tip_queen":  "Karalienė sujungia bokštą ir rikį – galingiausia figūra.",
+  "tip_king":   "Karalius juda 1 laukelį bet kuria kryptimi. Saugokite savo!"
+}

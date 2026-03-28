@@ -45,10 +45,10 @@
   "status_stalemate": "Stalemate! It's a draw.",
   "status_white_turn": "White's turn",
 
-  "tip_pawn":   "Pawns move forward 1 square (2 from start) and capture diagonally.",
+  "tip_pawn": "Pawns move forward 1 square (2 from start) and capture diagonally.",
   "tip_knight": "Knights move in an L-shape and can jump over pieces.",
   "tip_bishop": "Bishops slide diagonally any number of squares.",
-  "tip_rook":   "Rooks slide horizontally or vertically any number of squares.",
-  "tip_queen":  "Queens combine rook and bishop - the most powerful piece.",
-  "tip_king":   "Kings move 1 square in any direction. Protect yours!"
+  "tip_rook": "Rooks slide horizontally or vertically any number of squares.",
+  "tip_queen": "Queens combine rook and bishop - the most powerful piece.",
+  "tip_king": "Kings move 1 square in any direction. Protect yours!"
 }

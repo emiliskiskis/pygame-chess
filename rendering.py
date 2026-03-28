@@ -20,18 +20,8 @@ from constants import (
     MODE_AI,
     MODE_LEARNING,
 )
-from strings import (
-    MENU_TITLE, MENU_SUBTITLE, MENU_HINT,
-    MENU_PVP_LABEL, MENU_PVP_DESC,
-    MENU_AI_LABEL, MENU_AI_DESC,
-    MENU_LEARNING_LABEL, MENU_LEARNING_DESC,
-    PANEL_HEADER as STR_PANEL_HEADER,
-    PANEL_COL_NUMBER, PANEL_COL_WHITE, PANEL_COL_BLACK,
-    NOTATION_LABEL, NOTATION_HINT,
-    PAUSE_TITLE, PAUSE_RESUME, PAUSE_RESTART, PAUSE_MENU,
-    PAUSE_FULLSCREEN, PAUSE_QUIT, PAUSE_ESC_HINT,
-    OVER_PLAY_AGAIN, OVER_MENU, OVER_QUIT,
-)
+from strings import S
+from pieces import FLAG_W, FLAG_H
 
 
 def view_to_board(vr, vc, flipped):
@@ -238,7 +228,7 @@ def draw_notation_bar(screen, fonts, bar_text, bar_error, L):
     border_col = (200, 60, 60) if bar_error else (100, 100, 120)
     pygame.draw.rect(screen, border_col, (bx, by, bw, bh), 1, border_radius=4)
 
-    label = f.render(NOTATION_LABEL, True, (140, 140, 160))
+    label = f.render(S.NOTATION_LABEL, True, (140, 140, 160))
     screen.blit(label, (bx + pad, by + (bh - label.get_height()) // 2))
 
     text_x = bx + pad + label.get_width()
@@ -246,7 +236,7 @@ def draw_notation_bar(screen, fonts, bar_text, bar_error, L):
     txt_s = f.render(disp, True, (220, 220, 255) if not bar_error else (255, 120, 120))
     screen.blit(txt_s, (text_x, by + (bh - txt_s.get_height()) // 2))
 
-    hint = f.render(NOTATION_HINT, True, (70, 70, 90))
+    hint = f.render(S.NOTATION_HINT, True, (70, 70, 90))
     screen.blit(hint, hint.get_rect(midright=(bx + bw - pad, by + bh // 2)))
 
 
@@ -255,7 +245,7 @@ def draw_move_panel(screen, fonts, move_history, L):
     header_rect = pygame.Rect(L.board_w, 0, L.panel_w, L.border_top)
     pygame.draw.rect(screen, PANEL_BG, panel_rect)
     pygame.draw.rect(screen, PANEL_HEADER, header_rect)
-    title = fonts["header"].render(STR_PANEL_HEADER, True, (255, 220, 50))
+    title = fonts["header"].render(S.PANEL_HEADER, True, (255, 220, 50))
     screen.blit(
         title, title.get_rect(center=(L.board_w + L.panel_w // 2, L.border_top // 2))
     )
@@ -272,9 +262,9 @@ def draw_move_panel(screen, fonts, move_history, L):
     col_w = L.board_w + 32
     col_b = L.board_w + L.panel_w // 2 + 8
     y_hdr = L.border_top + 6
-    screen.blit(fp.render(PANEL_COL_NUMBER, True, (140, 140, 140)), (col_num, y_hdr))
-    screen.blit(fp.render(PANEL_COL_WHITE,  True, PANEL_TEXT_W),    (col_w,   y_hdr))
-    screen.blit(fp.render(PANEL_COL_BLACK,  True, PANEL_TEXT_B),    (col_b,   y_hdr))
+    screen.blit(fp.render(S.PANEL_COL_NUMBER, True, (140, 140, 140)), (col_num, y_hdr))
+    screen.blit(fp.render(S.PANEL_COL_WHITE,  True, PANEL_TEXT_W),   (col_w,   y_hdr))
+    screen.blit(fp.render(S.PANEL_COL_BLACK,  True, PANEL_TEXT_B),   (col_b,   y_hdr))
     pygame.draw.line(
         screen,
         (60, 60, 60),
@@ -328,15 +318,15 @@ def _draw_gradient(screen, w, h, top_col, bottom_col):
 def draw_menu(screen, fonts, hovered, L):
     _draw_gradient(screen, screen.get_width(), screen.get_height(), (91, 44, 111), (247, 220, 111))
     cy = L.window_h // 2
-    title = fonts["title"].render(MENU_TITLE, True, (255, 220, 50))
+    title = fonts["title"].render(S.MENU_TITLE, True, (255, 220, 50))
     screen.blit(title, title.get_rect(center=(L.window_w // 2, cy - 180)))
-    sub = fonts["sub"].render(MENU_SUBTITLE, True, (180, 180, 180))
+    sub = fonts["sub"].render(S.MENU_SUBTITLE, True, (180, 180, 180))
     screen.blit(sub, sub.get_rect(center=(L.window_w // 2, cy - 115)))
 
     buttons = [
-        (MODE_PVP,      MENU_PVP_LABEL,      MENU_PVP_DESC,      "♙", (255, 215,  50)),
-        (MODE_AI,       MENU_AI_LABEL,       MENU_AI_DESC,       "♟", (255,  90,  90)),
-        (MODE_LEARNING, MENU_LEARNING_LABEL, MENU_LEARNING_DESC, "♗", ( 80, 200, 255)),
+        (MODE_PVP,      S.MENU_PVP_LABEL,      S.MENU_PVP_DESC,      "♙", (255, 215,  50)),
+        (MODE_AI,       S.MENU_AI_LABEL,       S.MENU_AI_DESC,       "♟", (255,  90,  90)),
+        (MODE_LEARNING, S.MENU_LEARNING_LABEL, S.MENU_LEARNING_DESC, "♗", ( 80, 200, 255)),
     ]
     bw = min(460, L.window_w - 80)
     bh = max(50, L.tile - 10)
@@ -358,7 +348,7 @@ def draw_menu(screen, fonts, hovered, L):
         ds = fonts["sub"].render(desc, True, (160, 160, 160))
         screen.blit(ds, ds.get_rect(midleft=(bx + 16, by + 2 * bh // 3)))
 
-    hint = fonts["sub"].render(MENU_HINT, True, (80, 80, 80))
+    hint = fonts["sub"].render(S.MENU_HINT, True, (80, 80, 80))
     screen.blit(hint, hint.get_rect(center=(L.window_w // 2, L.window_h - 22)))
     return rects
 
@@ -375,7 +365,7 @@ def draw_pause_menu(screen, fonts, hovered, L):
     cx = L.window_w // 2
     cy = L.window_h // 2
 
-    title = fonts["over"].render(PAUSE_TITLE, True, (255, 220, 50))
+    title = fonts["over"].render(S.PAUSE_TITLE, True, (255, 220, 50))
     screen.blit(
         title,
         title.get_rect(
@@ -389,11 +379,11 @@ def draw_pause_menu(screen, fonts, hovered, L):
     )
 
     actions = [
-        ("resume",     PAUSE_RESUME,     "♙", ( 80, 220, 100)),
-        ("restart",    PAUSE_RESTART,    "♞", (255, 200,  50)),
-        ("menu",       PAUSE_MENU,       "♝", (130, 160, 255)),
-        ("fullscreen", PAUSE_FULLSCREEN, "♜", ( 80, 210, 210)),
-        ("quit",       PAUSE_QUIT,       "♛", (255,  90,  90)),
+        ("resume",     S.PAUSE_RESUME,     "♙", ( 80, 220, 100)),
+        ("restart",    S.PAUSE_RESTART,    "♞", (255, 200,  50)),
+        ("menu",       S.PAUSE_MENU,       "♝", (130, 160, 255)),
+        ("fullscreen", S.PAUSE_FULLSCREEN, "♜", ( 80, 210, 210)),
+        ("quit",       S.PAUSE_QUIT,       "♛", (255,  90,  90)),
     ]
     rects = {}
     total_h = len(actions) * gap - (gap - bh)
@@ -410,7 +400,7 @@ def draw_pause_menu(screen, fonts, hovered, L):
         _blit_icon_btn(screen, rect, fonts["icon"], icon, icon_col,
                        fonts["btn"], label, (230, 230, 230))
 
-    esc_hint = fonts["sub"].render(PAUSE_ESC_HINT, True, (90, 90, 90))
+    esc_hint = fonts["sub"].render(S.PAUSE_ESC_HINT, True, (90, 90, 90))
     screen.blit(
         esc_hint, esc_hint.get_rect(center=(cx, start_y + len(actions) * gap + 10))
     )
@@ -425,9 +415,9 @@ def draw_gameover_overlay(screen, fonts, message, over_hovered, L):
     screen.blit(ms, ms.get_rect(center=(L.window_w // 2, L.window_h // 2 - 90)))
 
     actions = [
-        ("restart", OVER_PLAY_AGAIN, "♞", ( 80, 220, 100)),
-        ("menu",    OVER_MENU,       "♝", (130, 160, 255)),
-        ("quit",    OVER_QUIT,       "♛", (255,  90,  90)),
+        ("restart", S.OVER_PLAY_AGAIN, "♞", ( 80, 220, 100)),
+        ("menu",    S.OVER_MENU,       "♝", (130, 160, 255)),
+        ("quit",    S.OVER_QUIT,       "♛", (255,  90,  90)),
     ]
     bw = min(280, L.window_w - 80)
     bh = max(40, L.tile - 20)
@@ -449,3 +439,65 @@ def draw_gameover_overlay(screen, fonts, message, over_hovered, L):
         _blit_icon_btn(screen, rect, fonts["icon"], icon, icon_col,
                        fonts["btn"], label, (230, 230, 230))
     return rects
+
+
+_PAD = 6  # padding inside flag buttons
+
+
+def draw_lang_picker(screen, fonts, flags, locales, current, open_, hovered, L):
+    """
+    Flag dropdown in the top-right corner of the menu.
+
+    Returns a dict of pygame.Rects:
+      "toggle"       – the always-visible current-flag button
+      "<locale_code>" – one rect per locale in the open dropdown
+    """
+    rects = {}
+    item_h = FLAG_H + _PAD * 2
+
+    # Max language-name width (for dropdown sizing)
+    name_w = max((fonts["sub"].size(name)[0] for _, name in locales), default=60)
+    drop_w = _PAD + FLAG_W + 8 + name_w + _PAD
+
+    # Toggle button: top-right, aligned with dropdown
+    tx = L.window_w - drop_w - 8
+    ty = 8
+    toggle_rect = pygame.Rect(tx, ty, drop_w, item_h)
+    rects["toggle"] = toggle_rect
+
+    bg = (80, 80, 110) if hovered == "toggle" else (50, 50, 75)
+    pygame.draw.rect(screen, bg, toggle_rect, border_radius=6)
+    pygame.draw.rect(screen, (120, 120, 160), toggle_rect, 1, border_radius=6)
+    _draw_flag_item(screen, fonts, flags, current, current,
+                    toggle_rect.x, toggle_rect.y, drop_w, item_h)
+
+    if not open_:
+        return rects
+
+    # Dropdown list below the toggle
+    dy = ty + item_h + 4
+    for code, name in locales:
+        item_rect = pygame.Rect(tx, dy, drop_w, item_h)
+        rects[code] = item_rect
+        item_bg = (80, 80, 110) if hovered == code else (40, 40, 60)
+        pygame.draw.rect(screen, item_bg, item_rect, border_radius=4)
+        border_col = (255, 220, 50) if code == current else (70, 70, 100)
+        pygame.draw.rect(screen, border_col, item_rect, 1, border_radius=4)
+        _draw_flag_item(screen, fonts, flags, code, name,
+                        tx, dy, drop_w, item_h)
+        dy += item_h + 2
+
+    return rects
+
+
+def _draw_flag_item(screen, fonts, flags, code, label, x, y, w, h):
+    """Blit flag (or code text fallback) + language label inside a row."""
+    if code in flags:
+        screen.blit(flags[code], (x + _PAD, y + (h - FLAG_H) // 2))
+    else:
+        code_s = fonts["sub"].render(code.upper(), True, (220, 220, 220))
+        screen.blit(code_s, code_s.get_rect(
+            midleft=(x + _PAD, y + h // 2)))
+    name_s = fonts["sub"].render(label, True, (220, 220, 220))
+    screen.blit(name_s, name_s.get_rect(
+        midleft=(x + _PAD + FLAG_W + 8, y + h // 2)))
