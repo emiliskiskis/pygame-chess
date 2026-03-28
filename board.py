@@ -134,7 +134,7 @@ def legal_moves(board, row, col, last_move, castling_rights):
         b2 = apply_move(board, row, col, tr, tc)
         if ptype == "pawn" and last_move:
             lfr, lfc, ltr, ltc = last_move
-            if tc == ltc and tr != ltr and board[ltr][ltc] == f"{opponent(color)}_pawn":
+            if col != tc and tc == ltc and tr != ltr and board[ltr][ltc] == f"{opponent(color)}_pawn":
                 b2[ltr][ltc] = None
         if not is_in_check(b2, color):
             legal.append((tr, tc))
@@ -216,7 +216,7 @@ def execute_move(board, selected, dest, last_move, castling_rights, turn):
 
     if mtype == "pawn" and last_move:
         lfr, lfc, ltr, ltc = last_move
-        if tc == ltc and tr != ltr and board[ltr][ltc] == f"{opponent(mcolor)}_pawn":
+        if fc != tc and tc == ltc and tr != ltr and board[ltr][ltc] == f"{opponent(mcolor)}_pawn":
             board[ltr][ltc] = None
             ep = True
 
@@ -248,11 +248,13 @@ def execute_move(board, selected, dest, last_move, castling_rights, turn):
     return last_move, castling_rights, note
 
 
-def post_move_status(board, turn, last_move, castling_rights):
+def post_move_status(board, turn, last_move, castling_rights, mode=None):
     if not has_any_legal_move(board, turn, last_move, castling_rights):
         if is_in_check(board, turn):
             return S.STATUS_CHECKMATE.format(winner=opponent(turn).capitalize()), True
         return S.STATUS_STALEMATE, True
     if is_in_check(board, turn):
         return S.STATUS_CHECK.format(player=turn.capitalize()), False
+    if mode == "ai":
+        return (S.STATUS_YOUR_TURN if turn == "white" else S.STATUS_AI_TURN), False
     return S.STATUS_TURN.format(player=turn.capitalize()), False

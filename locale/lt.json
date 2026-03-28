@@ -44,6 +44,8 @@
   "status_checkmate": "Šach ir mat! {winner} laimi!",
   "status_stalemate": "Patas! Lygiosios.",
   "status_white_turn": "Baltųjų ėjimas",
+  "status_your_turn": "Jūsų ėjimas",
+  "status_ai_turn": "DI ėjimas",
 
   "tip_pawn":   "Pėstininkai juda 1 laukelį pirmyn (2 iš pradžių) ir kerta įstrižai.",
   "tip_knight": "Žirgai juda L formos keliu ir gali peršokti per figūras.",

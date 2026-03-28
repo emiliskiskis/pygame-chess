@@ -207,6 +207,18 @@ def draw_status(screen, fonts, message, L):
     screen.blit(s, s.get_rect(center=(L.board_w // 2, L.border_top // 2)))
 
 
+def draw_ai_progress(screen, progress, L):
+    done, total = progress[0], max(progress[1], 1)
+    ratio = min(done / total, 1.0)
+    bar_w = L.board_px * 2 // 3
+    bar_h = max(4, L.tile // 16)
+    x = (L.board_w - bar_w) // 2
+    y = L.border_top - bar_h - 4
+    pygame.draw.rect(screen, (60, 60, 80), (x, y, bar_w, bar_h), border_radius=bar_h)
+    if ratio > 0:
+        pygame.draw.rect(screen, (100, 180, 255), (x, y, int(bar_w * ratio), bar_h), border_radius=bar_h)
+
+
 def draw_tip(screen, fonts, tip_text, L):
     if not tip_text:
         return

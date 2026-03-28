@@ -44,6 +44,8 @@
   "status_checkmate": "Checkmate! {winner} wins!",
   "status_stalemate": "Stalemate! It's a draw.",
   "status_white_turn": "White's turn",
+  "status_your_turn": "Your turn",
+  "status_ai_turn": "AI's turn",
 
   "tip_pawn": "Pawns move forward 1 square (2 from start) and capture diagonally.",
   "tip_knight": "Knights move in an L-shape and can jump over pieces.",

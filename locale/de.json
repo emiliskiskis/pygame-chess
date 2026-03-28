@@ -44,6 +44,8 @@
   "status_checkmate": "Schachmatt! {winner} gewinnt!",
   "status_stalemate": "Patt! Unentschieden.",
   "status_white_turn": "Weiß ist am Zug",
+  "status_your_turn": "Du bist dran",
+  "status_ai_turn": "KI ist am Zug",
 
   "tip_pawn":   "Bauern ziehen 1 Feld vor (2 vom Start) und schlagen diagonal.",
   "tip_knight": "Springer ziehen im L-förmigen Weg und können über Figuren springen.",

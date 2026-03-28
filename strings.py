@@ -7,12 +7,26 @@ The picker in the main menu will pick it up automatically.
 """
 
 import json
-import os
 from pathlib import Path
 
 _LOCALE_DIR = Path(__file__).parent / "locale"
+_PREFS_FILE = Path(__file__).parent / "prefs.dat"
 
 CURRENT_LOCALE = "en"
+
+
+def _save_locale(locale):
+    try:
+        _PREFS_FILE.write_text(locale, encoding="utf-8")
+    except OSError:
+        pass
+
+
+def _load_locale():
+    try:
+        return _PREFS_FILE.read_text(encoding="utf-8").strip()
+    except OSError:
+        return "en"
 
 
 def available_locales():
@@ -79,6 +93,8 @@ class S:
     STATUS_CHECKMATE = ""
     STATUS_STALEMATE = ""
     STATUS_WHITE_TURN = ""
+    STATUS_YOUR_TURN = ""
+    STATUS_AI_TURN = ""
 
     # Piece tips
     TIPS: dict = {}
@@ -93,6 +109,7 @@ def reload(locale="en"):
         locale = "en"
     d = json.loads(path.read_text(encoding="utf-8"))
     CURRENT_LOCALE = locale
+    _save_locale(locale)
 
     S.WINDOW_TITLE = d["window_title"]
     S.MENU_TITLE = d["menu_title"]
@@ -128,6 +145,8 @@ def reload(locale="en"):
     S.STATUS_CHECKMATE = d["status_checkmate"]
     S.STATUS_STALEMATE = d["status_stalemate"]
     S.STATUS_WHITE_TURN = d["status_white_turn"]
+    S.STATUS_YOUR_TURN = d["status_your_turn"]
+    S.STATUS_AI_TURN = d["status_ai_turn"]
     S.TIPS = {
         "pawn":   d["tip_pawn"],
         "knight": d["tip_knight"],
@@ -139,4 +158,4 @@ def reload(locale="en"):
 
 
 # Load default on import
-reload(os.environ.get("CHESS_LOCALE", "en"))
+reload(_load_locale())

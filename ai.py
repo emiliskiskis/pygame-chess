@@ -102,6 +102,30 @@ def minimax(board, depth, alpha, beta, maximising, last_move, castling_rights):
         return best, best_move
 
 
-def ai_move(board, last_move, castling_rights):
-    _, move = minimax(board, 3, -999999, 999999, False, last_move, castling_rights)
-    return move
+def ai_move(board, last_move, castling_rights, progress=None):
+    moves = all_legal_moves(board, "black", last_move, castling_rights)
+    if not moves:
+        return None
+    random.shuffle(moves)
+    if progress is not None:
+        progress[0] = 0
+        progress[1] = max(len(moves), 1)
+    best = 999999
+    best_move = None
+    alpha, beta = -999999, 999999
+    for fr, fc, tr, tc in moves:
+        b2 = copy.deepcopy(board)
+        cr2 = copy.deepcopy(castling_rights)
+        lm2, cr2, _ = execute_move(b2, (fr, fc), (tr, tc), last_move, cr2, "black")
+        score, _ = minimax(b2, 2, alpha, beta, True, lm2, cr2)
+        if score < best:
+            best = score
+            best_move = (fr, fc, tr, tc)
+        beta = min(beta, best)
+        if progress is not None:
+            progress[0] += 1
+        if beta <= alpha:
+            break
+    if progress is not None:
+        progress[0] = progress[1]
+    return best_move

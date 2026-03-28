@@ -44,6 +44,8 @@
   "status_checkmate": "¡Jaque mate! ¡{winner} gana!",
   "status_stalemate": "¡Ahogado! Empate.",
   "status_white_turn": "Turno de las blancas",
+  "status_your_turn": "Tu turno",
+  "status_ai_turn": "Turno de la IA",
 
   "tip_pawn":   "Los peones avanzan 1 casilla (2 desde el inicio) y capturan en diagonal.",
   "tip_knight": "Los caballos se mueven en forma de L y pueden saltar sobre piezas.",

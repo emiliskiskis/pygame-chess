@@ -44,6 +44,8 @@
   "status_checkmate": "Échec et mat ! {winner} gagne !",
   "status_stalemate": "Pat ! Match nul.",
   "status_white_turn": "Tour des blancs",
+  "status_your_turn": "Votre tour",
+  "status_ai_turn": "Tour de l'IA",
 
   "tip_pawn":   "Les pions avancent d'une case (2 au départ) et capturent en diagonale.",
   "tip_knight": "Les cavaliers se déplacent en L et peuvent sauter par-dessus les pièces.",

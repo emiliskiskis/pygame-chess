@@ -11,6 +11,7 @@ F11             : toggle fullscreen
 """
 
 import sys
+import threading
 
 import pygame
 
@@ -51,6 +52,7 @@ from rendering import (
     draw_pause_menu,
     draw_gameover_overlay,
     draw_lang_picker,
+    draw_ai_progress,
     PIECE_SYMBOLS,
 )
 
@@ -97,6 +99,9 @@ def main():
     board = turn = selected = possible_moves = last_move = None
     castling_rights = status_msg = game_over = move_history = None
     flipped = cursor = tip_text = ai_thinking = None
+    ai_thread = None
+    ai_result = [None]
+    ai_progress = [0, 1]
     dragging = False
     drag_piece_key = drag_from = None
     drag_pos = (0, 0)
@@ -104,7 +109,7 @@ def main():
     def new_game(new_mode):
         nonlocal board, turn, selected, possible_moves, last_move
         nonlocal castling_rights, status_msg, game_over, move_history
-        nonlocal flipped, cursor, tip_text, ai_thinking
+        nonlocal flipped, cursor, tip_text, ai_thinking, ai_thread, ai_result, ai_progress
         nonlocal bar_text, bar_error, paused, over_hovered, over_rects
         nonlocal pause_hovered, pause_rects
         board = starting_board()
@@ -116,13 +121,16 @@ def main():
             "white": {"kingside": True, "queenside": True},
             "black": {"kingside": True, "queenside": True},
         }
-        status_msg = S.STATUS_WHITE_TURN
+        status_msg = S.STATUS_YOUR_TURN if new_mode == MODE_AI else S.STATUS_WHITE_TURN
         game_over = False
         move_history = []
         flipped = False
         cursor = (7, 4)
         tip_text = ""
         ai_thinking = False
+        ai_thread = None
+        ai_result = [None]
+        ai_progress = [0, 1]
         bar_text = ""
         bar_error = False
         paused = False
@@ -163,7 +171,7 @@ def main():
         bar_text = ""
         bar_error = False
         status_msg, game_over = post_move_status(
-            board, turn, last_move, castling_rights
+            board, turn, last_move, castling_rights, mode
         )
 
     # ── Main loop ──────────────────────────────────────────────────────────
@@ -185,11 +193,24 @@ def main():
             and not ai_thinking
             and not paused
         ):
+            ai_progress[0] = 0
+            ai_progress[1] = 1
+            ai_result[0] = None
+            _board_snap = board
+            _lm_snap = last_move
+            _cr_snap = castling_rights
+            def _run_ai():
+                ai_result[0] = ai_move(_board_snap, _lm_snap, _cr_snap, ai_progress)
+            ai_thread = threading.Thread(target=_run_ai, daemon=True)
+            ai_thread.start()
             ai_thinking = True
-            move = ai_move(board, last_move, castling_rights)
+
+        if ai_thinking and ai_thread is not None and not ai_thread.is_alive():
+            ai_thinking = False
+            ai_thread = None
+            move = ai_result[0]
             if move:
                 do_move((move[0], move[1]), (move[2], move[3]))
-            ai_thinking = False
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -232,7 +253,7 @@ def main():
                                 pygame.display.set_caption(S.WINDOW_TITLE)
                                 if board is not None:
                                     status_msg, game_over = post_move_status(
-                                        board, turn, last_move, castling_rights
+                                        board, turn, last_move, castling_rights, mode
                                     )
                                 lang_open = False
                             picked_lang = True
@@ -267,7 +288,7 @@ def main():
                                 reload_strings(k)
                                 pygame.display.set_caption(S.WINDOW_TITLE)
                                 status_msg, game_over = post_move_status(
-                                    board, turn, last_move, castling_rights
+                                    board, turn, last_move, castling_rights, mode
                                 )
                                 lang_open = False
                             picked_lang = True
@@ -519,6 +540,9 @@ def main():
 
             if status_msg:
                 draw_status(screen, fonts, status_msg, L)
+
+            if mode == MODE_AI and ai_thinking:
+                draw_ai_progress(screen, ai_progress, L)
 
             if mode == MODE_LEARNING and tip_text:
                 draw_tip(screen, fonts, tip_text, L)
