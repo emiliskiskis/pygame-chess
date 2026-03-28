@@ -1,7 +1,7 @@
 import re
 
-from constants import FILES
-from board import piece_color, piece_type, legal_moves
+from ..constants import FILES
+from .board import piece_color, piece_type, legal_moves
 
 
 PIECE_LETTER = {"K": "king", "Q": "queen", "R": "rook", "B": "bishop", "N": "knight"}

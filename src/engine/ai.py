@@ -1,7 +1,7 @@
 import copy
 import random
 
-from board import (
+from .board import (
     all_legal_moves,
     execute_move,
     piece_color,

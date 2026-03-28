@@ -1,7 +1,7 @@
 import copy
 
-from constants import FILES
-from strings import S
+from ..constants import FILES
+from ..strings import S
 
 
 def starting_board():

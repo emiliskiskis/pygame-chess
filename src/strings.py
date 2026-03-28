@@ -9,8 +9,8 @@ The picker in the main menu will pick it up automatically.
 import json
 from pathlib import Path
 
-_LOCALE_DIR = Path(__file__).parent / "locale"
-_PREFS_FILE = Path(__file__).parent / "prefs.dat"
+_LOCALE_DIR = Path(__file__).parent.parent / "locale"
+_PREFS_FILE = Path(__file__).parent.parent / "prefs.dat"
 
 CURRENT_LOCALE = "en"
 

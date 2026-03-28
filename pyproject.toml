@@ -5,4 +5,19 @@ requires-python = ">= 3.14"
 dependencies = [
     "cairosvg>=2.9.0",
     "pygame>=2.6.1",
+    "torch>=2.11.0",
+    "torchvision>=0.26.0",
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = [
+  { index = "pytorch-cpu" },
+]
+torchvision = [
+  { index = "pytorch-cpu" },
 ]

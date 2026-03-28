@@ -6,7 +6,7 @@ FILES = "abcdefgh"
 RANKS = "87654321"
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-ASSET_DIR = os.path.join(SCRIPT_DIR, "assets")
+ASSET_DIR = os.path.join(SCRIPT_DIR, "..", "assets")
 
 WHITE_TILE = (240, 217, 181)
 BLACK_TILE = (181, 136, 99)

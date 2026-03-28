@@ -1,4 +1,4 @@
-from constants import MIN_TILE, DEFAULT_TILE
+from ..constants import MIN_TILE, DEFAULT_TILE
 
 
 class Layout:

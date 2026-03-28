@@ -1,6 +1,6 @@
 import pygame
 
-from constants import (
+from ..constants import (
     FILES,
     RANKS,
     WHITE_TILE,
@@ -21,8 +21,8 @@ from constants import (
     MODE_AI,
     MODE_LEARNING,
 )
-from strings import S
-from pieces import FLAG_W, FLAG_H
+from ..strings import S
+from ..engine.pieces import FLAG_W, FLAG_H
 
 
 def view_to_board(vr, vc, flipped):
