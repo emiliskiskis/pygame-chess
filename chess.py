@@ -59,25 +59,28 @@ class Layout:
         self.win_w = win_w
         self.win_h = win_h
 
-        # Derive tile size from the available height first, then check width
-        border_v = win_h // 10  # total vertical border space
-        border_h = win_w // 22  # left+right border space
         panel_w_min = 140
 
-        tile_from_h = (win_h - border_v) // 8
-        # How much horizontal space is left for the panel after the board?
-        tile_from_w = (win_w - border_h * 2 - panel_w_min) // 8
+        # Fixed border fractions — reserve space top, bottom, and sides before
+        # computing tile size so nothing ever gets clipped.
+        border_h_frac = win_w // 22  # left + right each
+        border_top_est = max(40, win_h // 9)
+        border_bot_est = max(30, win_h // 12)
+
+        tile_from_h = (win_h - border_top_est - border_bot_est) // 8
+        tile_from_w = (win_w - border_h_frac * 2 - panel_w_min) // 8
         tile = max(MIN_TILE, min(tile_from_h, tile_from_w))
 
         self.tile = tile
         self.border_side = max(20, tile // 2)
         self.border_top = max(40, tile + 5)
+        self.border_bottom = max(30, tile // 2)  # explicit bottom padding
 
         self.board_px = tile * 8
         self.board_w = self.board_px + self.border_side * 2
         self.panel_w = max(panel_w_min, win_w - self.board_w)
         self.window_w = self.board_w + self.panel_w
-        self.window_h = self.board_px + self.border_side + self.border_top
+        self.window_h = self.board_px + self.border_top + self.border_bottom
 
         # Font sizes scaled with tile
         scale = tile / DEFAULT_TILE
@@ -563,7 +566,7 @@ def draw_coordinates(screen, fonts, flipped, L):
         x = L.border_side + col * L.tile + L.tile // 2
         for y in [
             L.border_top // 2 + L.border_top // 4,
-            L.border_top + 8 * L.tile + L.border_side // 2,
+            L.border_top + 8 * L.tile + L.border_bottom // 2,
         ]:
             s = f.render(letter, True, COORD_COLOR)
             screen.blit(s, s.get_rect(center=(x, y)))
@@ -670,7 +673,11 @@ def draw_tip(screen, fonts, tip_text, L):
             line = w
     if line:
         lines.append(line)
-    y = L.border_top + 8 * L.tile + 6
+    y = (
+        L.border_top
+        + 8 * L.tile
+        + max(6, (L.border_bottom - f.get_linesize() * len(lines)) // 2)
+    )
     for ln in lines:
         s = f.render(ln, True, (180, 230, 180))
         screen.blit(s, (L.border_side, y))
