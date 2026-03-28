@@ -251,10 +251,13 @@ def execute_move(board, selected, dest, last_move, castling_rights, turn):
 def post_move_status(board, turn, last_move, castling_rights, mode=None):
     if not has_any_legal_move(board, turn, last_move, castling_rights):
         if is_in_check(board, turn):
-            return S.STATUS_CHECKMATE.format(winner=opponent(turn).capitalize()), True
+            winner_name = S.PANEL_COL_WHITE if opponent(turn) == "white" else S.PANEL_COL_BLACK
+            return S.STATUS_CHECKMATE.format(winner=winner_name), True
         return S.STATUS_STALEMATE, True
     if is_in_check(board, turn):
-        return S.STATUS_CHECK.format(player=turn.capitalize()), False
+        player_name = S.PANEL_COL_WHITE if turn == "white" else S.PANEL_COL_BLACK
+        return S.STATUS_CHECK.format(player=player_name), False
     if mode == "ai":
         return (S.STATUS_YOUR_TURN if turn == "white" else S.STATUS_AI_TURN), False
-    return S.STATUS_TURN.format(player=turn.capitalize()), False
+    player_name = S.PANEL_COL_WHITE if turn == "white" else S.PANEL_COL_BLACK
+    return S.STATUS_TURN.format(player=player_name), False
