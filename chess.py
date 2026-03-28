@@ -4,22 +4,31 @@ import os
 import random
 import sys
 
-import cairosvg
 import pygame
 
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
-TILE_SIZE = 80
-BOARD_SIZE = 8
-BORDER_SIDE = 40
-BORDER_TOP = 85
-BORDER = BORDER_SIDE
-PANEL_W = 200
-BOARD_W = TILE_SIZE * BOARD_SIZE + BORDER_SIDE * 2  # 720
-WINDOW_W = BOARD_W + PANEL_W  # 920
-WINDOW_H = TILE_SIZE * BOARD_SIZE + BORDER_SIDE + BORDER_TOP  # 765
+try:
+    import cairosvg
 
+    HAS_CAIRO = True
+except ImportError:
+    HAS_CAIRO = False
+
+# ---------------------------------------------------------------------------
+# Layout — all sizes are derived from a single TILE_SIZE so the board
+# scales cleanly when the window is resized or goes fullscreen.
+# ---------------------------------------------------------------------------
+
+MIN_TILE = 40  # minimum tile size in pixels
+DEFAULT_TILE = 80  # starting tile size
+PANEL_RATIO = 0.25  # panel width as fraction of board width
+
+FILES = "abcdefgh"
+RANKS = "87654321"
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+ASSET_DIR = os.path.join(SCRIPT_DIR, "assets")
+
+# Colour palette (never changes with scale)
 WHITE_TILE = (240, 217, 181)
 BLACK_TILE = (181, 136, 99)
 HIGHLIGHT_COLOR = (20, 85, 30, 180)
@@ -32,17 +41,7 @@ PANEL_BG = (28, 28, 28)
 PANEL_HEADER = (60, 60, 60)
 PANEL_TEXT_W = (240, 240, 240)
 PANEL_TEXT_B = (180, 180, 180)
-PANEL_LINE_H = 22
 
-FILES = "abcdefgh"
-RANKS = "87654321"
-
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-ASSET_DIR = os.path.join(SCRIPT_DIR, "assets")
-
-# ---------------------------------------------------------------------------
-# Game modes
-# ---------------------------------------------------------------------------
 MODE_MENU = "menu"
 MODE_PVP = "pvp"
 MODE_AI = "ai"
@@ -50,20 +49,66 @@ MODE_LEARNING = "learning"
 
 
 # ---------------------------------------------------------------------------
+# Layout helper — recomputed every time the window changes size
+# ---------------------------------------------------------------------------
+class Layout:
+    def __init__(self, win_w, win_h):
+        self.update(win_w, win_h)
+
+    def update(self, win_w, win_h):
+        self.win_w = win_w
+        self.win_h = win_h
+
+        # Derive tile size from the available height first, then check width
+        border_v = win_h // 10  # total vertical border space
+        border_h = win_w // 22  # left+right border space
+        panel_w_min = 140
+
+        tile_from_h = (win_h - border_v) // 8
+        # How much horizontal space is left for the panel after the board?
+        tile_from_w = (win_w - border_h * 2 - panel_w_min) // 8
+        tile = max(MIN_TILE, min(tile_from_h, tile_from_w))
+
+        self.tile = tile
+        self.border_side = max(20, tile // 2)
+        self.border_top = max(40, tile + 5)
+
+        self.board_px = tile * 8
+        self.board_w = self.board_px + self.border_side * 2
+        self.panel_w = max(panel_w_min, win_w - self.board_w)
+        self.window_w = self.board_w + self.panel_w
+        self.window_h = self.board_px + self.border_side + self.border_top
+
+        # Font sizes scaled with tile
+        scale = tile / DEFAULT_TILE
+        self.fs_coord = max(10, int(16 * scale))
+        self.fs_status = max(12, int(20 * scale))
+        self.fs_piece = max(24, int(52 * scale))
+        self.fs_panel = max(10, int(14 * scale))
+        self.fs_header = max(11, int(17 * scale))
+        self.fs_tip = max(9, int(13 * scale))
+        self.fs_title = max(28, int(56 * scale))
+        self.fs_btn = max(14, int(20 * scale))
+        self.fs_sub = max(10, int(14 * scale))
+        self.fs_over = max(20, int(34 * scale))
+        self.panel_line = max(16, int(22 * scale))
+
+
+# ---------------------------------------------------------------------------
 # SVG / piece loading
 # ---------------------------------------------------------------------------
-def load_svg(path: str, size: int) -> pygame.Surface:
+def load_svg(path, size):
     png = cairosvg.svg2png(url=path, output_width=size, output_height=size)
     return pygame.image.load(io.BytesIO(png)).convert_alpha()
 
 
-def load_pieces(asset_dir: str, size: int) -> dict:
+def load_pieces(asset_dir, size):
     pieces = {}
+    if not HAS_CAIRO:
+        return pieces
     colors = ["white", "black"]
     names = ["king", "queen", "rook", "bishop", "knight", "pawn"]
-    print(f"\nLoading pieces from: {asset_dir}")
     if not os.path.isdir(asset_dir):
-        print(f"  ERROR: assets folder not found at {asset_dir}")
         return pieces
     for color in colors:
         for name in names:
@@ -73,13 +118,16 @@ def load_pieces(asset_dir: str, size: int) -> dict:
             if os.path.isfile(path):
                 try:
                     pieces[key] = load_svg(path, size)
-                    print(f"  OK  {filename}")
-                except Exception as e:
-                    print(f"  FAIL {filename}: {e}")
-            else:
-                print(f"  MISSING {filename}")
-    print(f"\n  {len(pieces)}/{len(colors) * len(names)} pieces loaded.\n")
+                except Exception:
+                    pass
     return pieces
+
+
+def reload_pieces(asset_dir, size, existing_pieces):
+    """Re-render SVG pieces at a new size; fall back gracefully."""
+    if not HAS_CAIRO or not existing_pieces:
+        return existing_pieces
+    return load_pieces(asset_dir, size)
 
 
 # ---------------------------------------------------------------------------
@@ -97,7 +145,7 @@ def starting_board():
 
 
 # ---------------------------------------------------------------------------
-# Chess logic
+# Chess logic (unchanged from original)
 # ---------------------------------------------------------------------------
 def piece_color(p):
     return p.split("_")[0] if p else None
@@ -203,7 +251,6 @@ def legal_moves(board, row, col, last_move, castling_rights):
     ptype = piece_type(piece)
     cands = raw_moves(board, row, col)
 
-    # En-passant
     if ptype == "pawn" and last_move:
         fr, fc, tr, tc = last_move
         if (
@@ -225,7 +272,6 @@ def legal_moves(board, row, col, last_move, castling_rights):
         if not is_in_check(b2, color):
             legal.append((tr, tc))
 
-    # Castling
     if ptype == "king" and not is_in_check(board, color):
         rk = 7 if color == "white" else 0
         if row == rk and col == 4:
@@ -269,9 +315,6 @@ def promote_pawns(board, color):
             board[pr][c] = f"{color}_queen"
 
 
-# ---------------------------------------------------------------------------
-# Notation
-# ---------------------------------------------------------------------------
 def move_to_notation(
     fr, fc, tr, tc, moving, captured, ck, cq, ep, gives_check, gives_mate
 ):
@@ -297,9 +340,6 @@ def move_to_notation(
     return note + ("#" if gives_mate else "+" if gives_check else "")
 
 
-# ---------------------------------------------------------------------------
-# Execute move
-# ---------------------------------------------------------------------------
 def execute_move(board, selected, dest, last_move, castling_rights, turn):
     fr, fc = selected
     tr, tc = dest
@@ -346,7 +386,7 @@ def execute_move(board, selected, dest, last_move, castling_rights, turn):
 
 
 # ---------------------------------------------------------------------------
-# AI  (minimax with alpha-beta, depth 3)
+# AI
 # ---------------------------------------------------------------------------
 PIECE_VALUES = {
     "pawn": 100,
@@ -356,8 +396,6 @@ PIECE_VALUES = {
     "queen": 900,
     "king": 20000,
 }
-
-# Simple piece-square tables (encourages central control)
 PST_PAWN = [
     [0, 0, 0, 0, 0, 0, 0, 0],
     [50, 50, 50, 50, 50, 50, 50, 50],
@@ -382,7 +420,7 @@ PST_DEFAULT = [[0] * 8 for _ in range(8)]
 
 
 def pst_score(ptype, row, col, color):
-    table = (
+    t = (
         PST_PAWN
         if ptype == "pawn"
         else PST_KNIGHT
@@ -390,7 +428,7 @@ def pst_score(ptype, row, col, color):
         else PST_DEFAULT
     )
     r = row if color == "black" else 7 - row
-    return table[r][col]
+    return t[r][col]
 
 
 def evaluate(board):
@@ -445,13 +483,12 @@ def minimax(board, depth, alpha, beta, maximising, last_move, castling_rights):
 
 
 def ai_move(board, last_move, castling_rights):
-    """Return (fr,fc,tr,tc) for the best AI move as black."""
     _, move = minimax(board, 3, -999999, 999999, False, last_move, castling_rights)
     return move
 
 
 # ---------------------------------------------------------------------------
-# Learning mode: hints
+# Learning tips
 # ---------------------------------------------------------------------------
 PIECE_TIPS = {
     "pawn": "Pawns move forward 1 square (2 from start) and capture diagonally.",
@@ -461,225 +498,6 @@ PIECE_TIPS = {
     "queen": "Queens combine rook and bishop — the most powerful piece.",
     "king": "Kings move 1 square in any direction. Protect yours!",
 }
-
-
-# ---------------------------------------------------------------------------
-# Drawing helpers
-# ---------------------------------------------------------------------------
-def draw_board(screen):
-    screen.fill(BORDER_BG)
-    for row in range(BOARD_SIZE):
-        for col in range(BOARD_SIZE):
-            color = WHITE_TILE if (row + col) % 2 == 0 else BLACK_TILE
-            pygame.draw.rect(
-                screen,
-                color,
-                (
-                    BORDER_SIDE + col * TILE_SIZE,
-                    BORDER_TOP + row * TILE_SIZE,
-                    TILE_SIZE,
-                    TILE_SIZE,
-                ),
-            )
-
-
-def draw_coordinates(screen, font, flipped):
-    files = FILES if not flipped else FILES[::-1]
-    ranks = RANKS if not flipped else RANKS[::-1]
-    for col, letter in enumerate(files):
-        x = BORDER_SIDE + col * TILE_SIZE + TILE_SIZE // 2
-        for y in [
-            BORDER_TOP // 2 + 20,
-            BORDER_TOP + BOARD_SIZE * TILE_SIZE + BORDER_SIDE // 2,
-        ]:
-            s = font.render(letter, True, COORD_COLOR)
-            screen.blit(s, s.get_rect(center=(x, y)))
-    for row, number in enumerate(ranks):
-        y = BORDER_TOP + row * TILE_SIZE + TILE_SIZE // 2
-        for x in [
-            BORDER_SIDE // 2,
-            BORDER_SIDE + BOARD_SIZE * TILE_SIZE + BORDER_SIDE // 2,
-        ]:
-            s = font.render(number, True, COORD_COLOR)
-            screen.blit(s, s.get_rect(center=(x, y)))
-
-
-def draw_highlights(screen, selected, moves, last_move_coords, cursor, flipped):
-    overlay = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
-
-    # Last move tint
-    if last_move_coords:
-        fr, fc, tr, tc = last_move_coords
-        for r, c in [(fr, fc), (tr, tc)]:
-            vr, vc = board_to_view(r, c, flipped)
-            overlay.fill(LAST_MOVE_COLOR)
-            screen.blit(
-                overlay, (BORDER_SIDE + vc * TILE_SIZE, BORDER_TOP + vr * TILE_SIZE)
-            )
-
-    # Selected piece
-    if selected:
-        vr, vc = board_to_view(selected[0], selected[1], flipped)
-        overlay.fill(SELECT_COLOR)
-        screen.blit(
-            overlay, (BORDER_SIDE + vc * TILE_SIZE, BORDER_TOP + vr * TILE_SIZE)
-        )
-
-    # Legal move dots
-    overlay.fill(HIGHLIGHT_COLOR)
-    for r, c in moves:
-        vr, vc = board_to_view(r, c, flipped)
-        screen.blit(
-            overlay, (BORDER_SIDE + vc * TILE_SIZE, BORDER_TOP + vr * TILE_SIZE)
-        )
-
-    # Keyboard cursor
-    if cursor:
-        vr, vc = board_to_view(cursor[0], cursor[1], flipped)
-        overlay.fill(CURSOR_COLOR)
-        screen.blit(
-            overlay, (BORDER_SIDE + vc * TILE_SIZE, BORDER_TOP + vr * TILE_SIZE)
-        )
-        pygame.draw.rect(
-            screen,
-            (200, 50, 200),
-            (
-                BORDER_SIDE + vc * TILE_SIZE,
-                BORDER_TOP + vr * TILE_SIZE,
-                TILE_SIZE,
-                TILE_SIZE,
-            ),
-            3,
-        )
-
-
-def draw_pieces(screen, board, pieces, flipped, skip=None):
-    for row in range(BOARD_SIZE):
-        for col in range(BOARD_SIZE):
-            piece = board[row][col]
-            if piece and piece in pieces and (row, col) != skip:
-                vr, vc = board_to_view(row, col, flipped)
-                screen.blit(
-                    pieces[piece],
-                    (BORDER_SIDE + vc * TILE_SIZE, BORDER_TOP + vr * TILE_SIZE),
-                )
-
-
-def draw_fallback_pieces(screen, board, font_large, flipped, skip=None):
-    symbols = {
-        "white_king": "♔",
-        "white_queen": "♕",
-        "white_rook": "♖",
-        "white_bishop": "♗",
-        "white_knight": "♘",
-        "white_pawn": "♙",
-        "black_king": "♚",
-        "black_queen": "♛",
-        "black_rook": "♜",
-        "black_bishop": "♝",
-        "black_knight": "♞",
-        "black_pawn": "♟",
-    }
-    for row in range(BOARD_SIZE):
-        for col in range(BOARD_SIZE):
-            piece = board[row][col]
-            if piece and (row, col) != skip:
-                vr, vc = board_to_view(row, col, flipped)
-                sym = symbols.get(piece, "?")
-                surf = font_large.render(sym, True, (30, 30, 30))
-                rect = surf.get_rect(
-                    center=(
-                        BORDER_SIDE + vc * TILE_SIZE + TILE_SIZE // 2,
-                        BORDER_TOP + vr * TILE_SIZE + TILE_SIZE // 2,
-                    )
-                )
-                screen.blit(surf, rect)
-
-
-def draw_status(screen, font, message):
-    s = font.render(message, True, (255, 220, 50))
-    screen.blit(s, s.get_rect(center=(BOARD_W // 2, BORDER_TOP // 2 - 8)))
-
-
-def draw_tip(screen, font_tip, tip_text):
-    """Render a learning-mode tip at the bottom of the board area."""
-    if not tip_text:
-        return
-    max_w = BOARD_W - BORDER_SIDE * 2
-    words = tip_text.split()
-    lines = []
-    line = ""
-    for w in words:
-        test = (line + " " + w).strip()
-        if font_tip.size(test)[0] <= max_w:
-            line = test
-        else:
-            lines.append(line)
-            line = w
-    if line:
-        lines.append(line)
-    y = BORDER_TOP + BOARD_SIZE * TILE_SIZE + 6
-    for ln in lines:
-        s = font_tip.render(ln, True, (180, 230, 180))
-        screen.blit(s, (BORDER_SIDE, y))
-        y += font_tip.get_linesize()
-
-
-def draw_move_panel(screen, font_panel, font_header, move_history, scroll_offset):
-    panel_rect = pygame.Rect(BOARD_W, 0, PANEL_W, WINDOW_H)
-    pygame.draw.rect(screen, PANEL_BG, panel_rect)
-    header_rect = pygame.Rect(BOARD_W, 0, PANEL_W, BORDER_TOP)
-    pygame.draw.rect(screen, PANEL_HEADER, header_rect)
-    title = font_header.render("Moves", True, (255, 220, 50))
-    screen.blit(title, title.get_rect(center=(BOARD_W + PANEL_W // 2, BORDER_TOP // 2)))
-    pygame.draw.line(
-        screen, (80, 80, 80), (BOARD_W, BORDER_TOP), (WINDOW_W, BORDER_TOP), 1
-    )
-
-    col_x_num = BOARD_W + 10
-    col_x_w = BOARD_W + 40
-    col_x_b = BOARD_W + 120
-    y_hdr = BORDER_TOP + 8
-    screen.blit(font_panel.render("#", True, (140, 140, 140)), (col_x_num, y_hdr))
-    screen.blit(font_panel.render("White", True, PANEL_TEXT_W), (col_x_w, y_hdr))
-    screen.blit(font_panel.render("Black", True, PANEL_TEXT_B), (col_x_b, y_hdr))
-    pygame.draw.line(
-        screen,
-        (60, 60, 60),
-        (BOARD_W + 5, y_hdr + PANEL_LINE_H - 2),
-        (WINDOW_W - 5, y_hdr + PANEL_LINE_H - 2),
-        1,
-    )
-
-    list_top = BORDER_TOP + PANEL_LINE_H + 14
-    visible_h = WINDOW_H - list_top - 10
-    max_rows = visible_h // PANEL_LINE_H
-
-    pairs = []
-    for i in range(0, len(move_history), 2):
-        pairs.append(
-            (
-                move_history[i],
-                move_history[i + 1] if i + 1 < len(move_history) else None,
-            )
-        )
-    total_rows = len(pairs)
-    scroll_offset = max(0, total_rows - max_rows)
-
-    for idx, (wm, bm) in enumerate(pairs[scroll_offset:]):
-        y = list_top + idx * PANEL_LINE_H
-        if y + PANEL_LINE_H > WINDOW_H - 5:
-            break
-        mn = scroll_offset + idx + 1
-        if scroll_offset + idx == total_rows - 1:
-            pygame.draw.rect(
-                screen, (50, 50, 60), (BOARD_W + 4, y - 2, PANEL_W - 8, PANEL_LINE_H)
-            )
-        screen.blit(font_panel.render(f"{mn}.", True, (120, 120, 120)), (col_x_num, y))
-        screen.blit(font_panel.render(wm, True, PANEL_TEXT_W), (col_x_w, y))
-        if bm:
-            screen.blit(font_panel.render(bm, True, PANEL_TEXT_B), (col_x_b, y))
-    return scroll_offset
 
 
 # ---------------------------------------------------------------------------
@@ -693,81 +511,291 @@ def board_to_view(r, c, flipped):
     return (7 - r, 7 - c) if flipped else (r, c)
 
 
-def pixel_to_cell(mx, my, flipped):
-    vc = (mx - BORDER_SIDE) // TILE_SIZE
-    vr = (my - BORDER_TOP) // TILE_SIZE
+def pixel_to_cell(mx, my, flipped, L):
+    vc = (mx - L.border_side) // L.tile
+    vr = (my - L.border_top) // L.tile
     if 0 <= vr < 8 and 0 <= vc < 8:
         return view_to_board(vr, vc, flipped)
     return None
 
 
 # ---------------------------------------------------------------------------
-# Menu screen
+# Drawing
 # ---------------------------------------------------------------------------
-def draw_menu(screen, fonts, hovered):
+def make_fonts(L):
+    """Build all fonts at the current layout scale."""
+    return {
+        "coord": pygame.font.SysFont("Arial", L.fs_coord, bold=True),
+        "status": pygame.font.SysFont("Arial", L.fs_status, bold=True),
+        "piece": pygame.font.SysFont("Segoe UI Symbol", L.fs_piece),
+        "panel": pygame.font.SysFont("Arial", L.fs_panel),
+        "header": pygame.font.SysFont("Arial", L.fs_header, bold=True),
+        "tip": pygame.font.SysFont("Arial", L.fs_tip),
+        "title": pygame.font.SysFont("Arial", L.fs_title, bold=True),
+        "btn": pygame.font.SysFont("Arial", L.fs_btn, bold=True),
+        "sub": pygame.font.SysFont("Arial", L.fs_sub),
+        "over": pygame.font.SysFont("Arial", L.fs_over, bold=True),
+    }
+
+
+def draw_board(screen, L):
+    screen.fill(BORDER_BG)
+    for row in range(8):
+        for col in range(8):
+            color = WHITE_TILE if (row + col) % 2 == 0 else BLACK_TILE
+            pygame.draw.rect(
+                screen,
+                color,
+                (
+                    L.border_side + col * L.tile,
+                    L.border_top + row * L.tile,
+                    L.tile,
+                    L.tile,
+                ),
+            )
+
+
+def draw_coordinates(screen, fonts, flipped, L):
+    f = fonts["coord"]
+    files = FILES if not flipped else FILES[::-1]
+    ranks = RANKS if not flipped else RANKS[::-1]
+    for col, letter in enumerate(files):
+        x = L.border_side + col * L.tile + L.tile // 2
+        for y in [
+            L.border_top // 2 + L.border_top // 4,
+            L.border_top + 8 * L.tile + L.border_side // 2,
+        ]:
+            s = f.render(letter, True, COORD_COLOR)
+            screen.blit(s, s.get_rect(center=(x, y)))
+    for row, number in enumerate(ranks):
+        y = L.border_top + row * L.tile + L.tile // 2
+        for x in [L.border_side // 2, L.border_side + 8 * L.tile + L.border_side // 2]:
+            s = f.render(number, True, COORD_COLOR)
+            screen.blit(s, s.get_rect(center=(x, y)))
+
+
+def draw_highlights(screen, selected, moves, last_move_coords, cursor, flipped, L):
+    ov = pygame.Surface((L.tile, L.tile), pygame.SRCALPHA)
+    if last_move_coords:
+        fr, fc, tr, tc = last_move_coords
+        for r, c in [(fr, fc), (tr, tc)]:
+            vr, vc = board_to_view(r, c, flipped)
+            ov.fill(LAST_MOVE_COLOR)
+            screen.blit(ov, (L.border_side + vc * L.tile, L.border_top + vr * L.tile))
+    if selected:
+        vr, vc = board_to_view(selected[0], selected[1], flipped)
+        ov.fill(SELECT_COLOR)
+        screen.blit(ov, (L.border_side + vc * L.tile, L.border_top + vr * L.tile))
+    ov.fill(HIGHLIGHT_COLOR)
+    for r, c in moves:
+        vr, vc = board_to_view(r, c, flipped)
+        screen.blit(ov, (L.border_side + vc * L.tile, L.border_top + vr * L.tile))
+    if cursor:
+        vr, vc = board_to_view(cursor[0], cursor[1], flipped)
+        ov.fill(CURSOR_COLOR)
+        screen.blit(ov, (L.border_side + vc * L.tile, L.border_top + vr * L.tile))
+        pygame.draw.rect(
+            screen,
+            (200, 50, 200),
+            (L.border_side + vc * L.tile, L.border_top + vr * L.tile, L.tile, L.tile),
+            3,
+        )
+
+
+def draw_pieces(screen, board, pieces, flipped, L, skip=None):
+    for row in range(8):
+        for col in range(8):
+            piece = board[row][col]
+            if piece and piece in pieces and (row, col) != skip:
+                vr, vc = board_to_view(row, col, flipped)
+                screen.blit(
+                    pieces[piece],
+                    (L.border_side + vc * L.tile, L.border_top + vr * L.tile),
+                )
+
+
+PIECE_SYMBOLS = {
+    "white_king": "♔",
+    "white_queen": "♕",
+    "white_rook": "♖",
+    "white_bishop": "♗",
+    "white_knight": "♘",
+    "white_pawn": "♙",
+    "black_king": "♚",
+    "black_queen": "♛",
+    "black_rook": "♜",
+    "black_bishop": "♝",
+    "black_knight": "♞",
+    "black_pawn": "♟",
+}
+
+
+def draw_fallback_pieces(screen, board, fonts, flipped, L, skip=None):
+    f = fonts["piece"]
+    for row in range(8):
+        for col in range(8):
+            piece = board[row][col]
+            if piece and (row, col) != skip:
+                vr, vc = board_to_view(row, col, flipped)
+                sym = PIECE_SYMBOLS.get(piece, "?")
+                surf = f.render(sym, True, (30, 30, 30))
+                rect = surf.get_rect(
+                    center=(
+                        L.border_side + vc * L.tile + L.tile // 2,
+                        L.border_top + vr * L.tile + L.tile // 2,
+                    )
+                )
+                screen.blit(surf, rect)
+
+
+def draw_status(screen, fonts, message, L):
+    s = fonts["status"].render(message, True, (255, 220, 50))
+    screen.blit(s, s.get_rect(center=(L.board_w // 2, L.border_top // 2 - 4)))
+
+
+def draw_tip(screen, fonts, tip_text, L):
+    if not tip_text:
+        return
+    f = fonts["tip"]
+    max_w = L.board_px
+    words = tip_text.split()
+    lines = []
+    line = ""
+    for w in words:
+        test = (line + " " + w).strip()
+        if f.size(test)[0] <= max_w:
+            line = test
+        else:
+            lines.append(line)
+            line = w
+    if line:
+        lines.append(line)
+    y = L.border_top + 8 * L.tile + 6
+    for ln in lines:
+        s = f.render(ln, True, (180, 230, 180))
+        screen.blit(s, (L.border_side, y))
+        y += f.get_linesize()
+
+
+def draw_move_panel(screen, fonts, move_history, scroll_offset, L):
+    panel_rect = pygame.Rect(L.board_w, 0, L.panel_w, L.window_h)
+    header_rect = pygame.Rect(L.board_w, 0, L.panel_w, L.border_top)
+    pygame.draw.rect(screen, PANEL_BG, panel_rect)
+    pygame.draw.rect(screen, PANEL_HEADER, header_rect)
+    title = fonts["header"].render("Moves", True, (255, 220, 50))
+    screen.blit(
+        title, title.get_rect(center=(L.board_w + L.panel_w // 2, L.border_top // 2))
+    )
+    pygame.draw.line(
+        screen,
+        (80, 80, 80),
+        (L.board_w, L.border_top),
+        (L.board_w + L.panel_w, L.border_top),
+        1,
+    )
+
+    fp = fonts["panel"]
+    col_x_num = L.board_w + 8
+    col_x_w = L.board_w + 32
+    col_x_b = L.board_w + L.panel_w // 2 + 8
+    y_hdr = L.border_top + 6
+    screen.blit(fp.render("#", True, (140, 140, 140)), (col_x_num, y_hdr))
+    screen.blit(fp.render("White", True, PANEL_TEXT_W), (col_x_w, y_hdr))
+    screen.blit(fp.render("Black", True, PANEL_TEXT_B), (col_x_b, y_hdr))
+    pygame.draw.line(
+        screen,
+        (60, 60, 60),
+        (L.board_w + 4, y_hdr + L.panel_line - 2),
+        (L.board_w + L.panel_w - 4, y_hdr + L.panel_line - 2),
+        1,
+    )
+
+    list_top = L.border_top + L.panel_line + 12
+    visible_h = L.window_h - list_top - 10
+    max_rows = max(1, visible_h // L.panel_line)
+
+    pairs = []
+    for i in range(0, len(move_history), 2):
+        pairs.append(
+            (
+                move_history[i],
+                move_history[i + 1] if i + 1 < len(move_history) else None,
+            )
+        )
+    total_rows = len(pairs)
+    scroll_offset = max(0, total_rows - max_rows)
+
+    for idx, (wm, bm) in enumerate(pairs[scroll_offset:]):
+        y = list_top + idx * L.panel_line
+        if y + L.panel_line > L.window_h - 5:
+            break
+        mn = scroll_offset + idx + 1
+        if scroll_offset + idx == total_rows - 1:
+            pygame.draw.rect(
+                screen,
+                (50, 50, 60),
+                (L.board_w + 4, y - 2, L.panel_w - 8, L.panel_line),
+            )
+        screen.blit(fp.render(f"{mn}.", True, (120, 120, 120)), (col_x_num, y))
+        screen.blit(fp.render(wm, True, PANEL_TEXT_W), (col_x_w, y))
+        if bm:
+            screen.blit(fp.render(bm, True, PANEL_TEXT_B), (col_x_b, y))
+    return scroll_offset
+
+
+def draw_menu(screen, fonts, hovered, L):
     screen.fill((20, 20, 20))
-    title_font, btn_font, sub_font = fonts
-
-    # Title
-    title = title_font.render("♟ Chess", True, (255, 220, 50))
-    screen.blit(title, title.get_rect(center=(WINDOW_W // 2, 120)))
-
-    subtitle = sub_font.render("Choose a game mode", True, (180, 180, 180))
-    screen.blit(subtitle, subtitle.get_rect(center=(WINDOW_W // 2, 185)))
+    cy = L.window_h // 2
+    title = fonts["title"].render("♟ Chess", True, (255, 220, 50))
+    screen.blit(title, title.get_rect(center=(L.window_w // 2, cy - 180)))
+    subtitle = fonts["sub"].render("Choose a game mode", True, (180, 180, 180))
+    screen.blit(subtitle, subtitle.get_rect(center=(L.window_w // 2, cy - 110)))
 
     buttons = [
         (MODE_PVP, "👥  Player vs Player", "Two humans play on the same computer"),
         (MODE_AI, "🤖  Player vs AI", "Play against the computer (black)"),
         (MODE_LEARNING, "📖  Learning Mode", "Hints, tips and move explanations"),
     ]
-
+    bw = min(460, L.window_w - 80)
+    bh = max(50, L.tile - 10)
+    gap = bh + 18
     rects = {}
-    for i, (mode, label, desc) in enumerate(buttons):
-        bw, bh = 420, 70
-        bx = WINDOW_W // 2 - bw // 2
-        by = 240 + i * 100
+    for i, (m, label, desc) in enumerate(buttons):
+        bx = L.window_w // 2 - bw // 2
+        by = cy - 50 + i * gap
         rect = pygame.Rect(bx, by, bw, bh)
-        rects[mode] = rect
-
-        col = (70, 70, 90) if hovered == mode else (45, 45, 60)
-        border = (255, 220, 50) if hovered == mode else (80, 80, 100)
+        rects[m] = rect
+        col = (70, 70, 90) if hovered == m else (45, 45, 60)
+        border = (255, 220, 50) if hovered == m else (80, 80, 100)
         pygame.draw.rect(screen, col, rect, border_radius=12)
         pygame.draw.rect(screen, border, rect, 2, border_radius=12)
+        ls = fonts["btn"].render(label, True, (240, 240, 240))
+        screen.blit(ls, ls.get_rect(midleft=(bx + 16, by + bh // 3)))
+        ds = fonts["sub"].render(desc, True, (160, 160, 160))
+        screen.blit(ds, ds.get_rect(midleft=(bx + 16, by + 2 * bh // 3)))
 
-        ls = btn_font.render(label, True, (240, 240, 240))
-        screen.blit(ls, ls.get_rect(midleft=(bx + 20, by + 22)))
-        ds = sub_font.render(desc, True, (160, 160, 160))
-        screen.blit(ds, ds.get_rect(midleft=(bx + 20, by + 50)))
-
-    # Keyboard hint
-    hint = sub_font.render(
-        "Tip: use arrow keys + Enter/Space to move with keyboard during the game",
+    # Controls hint
+    hint = fonts["sub"].render(
+        "F11 / F  ·  fullscreen    Arrow keys + Enter  ·  keyboard control",
         True,
-        (100, 100, 100),
+        (90, 90, 90),
     )
-    screen.blit(hint, hint.get_rect(center=(WINDOW_W // 2, WINDOW_H - 30)))
-
+    screen.blit(hint, hint.get_rect(center=(L.window_w // 2, L.window_h - 22)))
     return rects
 
 
-# ---------------------------------------------------------------------------
-# After-game screen
-# ---------------------------------------------------------------------------
-def draw_gameover_overlay(screen, font_large, font_small, message):
-    overlay = pygame.Surface((WINDOW_W, WINDOW_H), pygame.SRCALPHA)
-    overlay.fill((0, 0, 0, 160))
-    screen.blit(overlay, (0, 0))
-    ms = font_large.render(message, True, (255, 220, 50))
-    screen.blit(ms, ms.get_rect(center=(BOARD_W // 2, WINDOW_H // 2 - 30)))
-    rs = font_small.render(
-        "Press R to restart  |  M for menu  |  Q to quit", True, (200, 200, 200)
+def draw_gameover_overlay(screen, fonts, message, L):
+    ov = pygame.Surface((L.window_w, L.window_h), pygame.SRCALPHA)
+    ov.fill((0, 0, 0, 160))
+    screen.blit(ov, (0, 0))
+    ms = fonts["over"].render(message, True, (255, 220, 50))
+    screen.blit(ms, ms.get_rect(center=(L.board_w // 2, L.window_h // 2 - 30)))
+    rs = fonts["sub"].render(
+        "R  restart   |   M  menu   |   Q  quit", True, (200, 200, 200)
     )
-    screen.blit(rs, rs.get_rect(center=(BOARD_W // 2, WINDOW_H // 2 + 20)))
+    screen.blit(rs, rs.get_rect(center=(L.board_w // 2, L.window_h // 2 + 24)))
 
 
-# ---------------------------------------------------------------------------
-# Shared post-move logic
-# ---------------------------------------------------------------------------
 def post_move_status(board, turn, last_move, castling_rights):
     if not has_any_legal_move(board, turn, last_move, castling_rights):
         if is_in_check(board, turn):
@@ -783,29 +811,31 @@ def post_move_status(board, turn, last_move, castling_rights):
 # ---------------------------------------------------------------------------
 def main():
     pygame.init()
-    screen = pygame.display.set_mode((WINDOW_W, WINDOW_H))
+
+    # Start in a reasonable windowed size
+    init_w, init_h = 920, 765
+    screen = pygame.display.set_mode((init_w, init_h), pygame.RESIZABLE)
     pygame.display.set_caption("Chess")
     clock = pygame.time.Clock()
 
-    # Fonts
-    font = pygame.font.SysFont("Arial", 24, bold=True)
-    font_large = pygame.font.SysFont("Segoe UI Symbol", 52)
-    font_panel = pygame.font.SysFont("Arial", 15)
-    font_header = pygame.font.SysFont("Arial", 20, bold=True)
-    font_tip = pygame.font.SysFont("Arial", 13)
-    font_title = pygame.font.SysFont("Arial", 64, bold=True)
-    font_btn = pygame.font.SysFont("Arial", 22, bold=True)
-    font_sub = pygame.font.SysFont("Arial", 15)
-    font_over = pygame.font.SysFont("Arial", 36, bold=True)
-    menu_fonts = (font_title, font_btn, font_sub)
-
-    pieces = load_pieces(ASSET_DIR, TILE_SIZE)
+    fullscreen = False
+    L = Layout(init_w, init_h)
+    fonts = make_fonts(L)
+    pieces = load_pieces(ASSET_DIR, L.tile)
     use_svg = bool(pieces)
+    last_tile = L.tile  # track when we need to reload piece images
 
-    # ── State machine ──────────────────────────────────────────────────────
     mode = MODE_MENU
     menu_hovered = None
     menu_rects = {}
+
+    # ── Game state ────────────────────────────────────────────────────────
+    board = turn = selected = possible_moves = last_move = None
+    castling_rights = status_msg = game_over = move_history = None
+    scroll_offset = flipped = cursor = tip_text = ai_thinking = None
+    dragging = False
+    drag_piece_key = drag_from = None
+    drag_pos = (0, 0)
 
     def new_game(new_mode):
         nonlocal board, turn, selected, possible_moves, last_move
@@ -826,36 +856,41 @@ def main():
         move_history = []
         scroll_offset = 0
         flipped = False
-        cursor = (7, 4)  # keyboard cursor starts on white king
+        cursor = (7, 4)
         tip_text = ""
         ai_thinking = False
 
-    # Initialise game vars (will be properly set by new_game)
-    board = None
-    turn = None
-    selected = None
-    possible_moves = []
-    last_move = None
-    castling_rights = None
-    status_msg = ""
-    game_over = False
-    move_history = []
-    scroll_offset = 0
-    flipped = False
-    cursor = (7, 4)
-    tip_text = ""
-    ai_thinking = False
-    dragging = False
-    drag_piece_key = None
-    drag_from = None
-    drag_pos = (0, 0)
+    def apply_new_size(w, h):
+        nonlocal L, fonts, pieces, use_svg, last_tile
+        L = Layout(w, h)
+        fonts = make_fonts(L)
+        if L.tile != last_tile:
+            pieces = reload_pieces(ASSET_DIR, L.tile, pieces)
+            use_svg = bool(pieces)
+            last_tile = L.tile
 
-    # ── Main loop ──────────────────────────────────────────────────────────
+    def toggle_fullscreen():
+        nonlocal fullscreen, screen
+        fullscreen = not fullscreen
+        if fullscreen:
+            screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+        else:
+            screen = pygame.display.set_mode((init_w, init_h), pygame.RESIZABLE)
+        w, h = screen.get_size()
+        apply_new_size(w, h)
+
+    # ── Main loop ─────────────────────────────────────────────────────────
     while True:
         mx, my = pygame.mouse.get_pos()
 
-        # ── AI move (black's turn in AI mode) ─────────────────────────────
-        if mode == MODE_AI and turn == "black" and not game_over and not ai_thinking:
+        # AI turn
+        if (
+            mode == MODE_AI
+            and turn == "black"
+            and board
+            and not game_over
+            and not ai_thinking
+        ):
             ai_thinking = True
             move = ai_move(board, last_move, castling_rights)
             if move:
@@ -870,19 +905,27 @@ def main():
                 )
             ai_thinking = False
 
-        # ── Events ────────────────────────────────────────────────────────
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
 
-            # ── Global keys ───────────────────────────────────────────────
+            # Window resize
+            if event.type == pygame.VIDEORESIZE:
+                w, h = max(event.w, 400), max(event.h, 400)
+                screen = pygame.display.set_mode((w, h), pygame.RESIZABLE)
+                apply_new_size(w, h)
+
+            # Global keys
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_q:
                     pygame.quit()
                     sys.exit()
                 if event.key == pygame.K_m:
                     mode = MODE_MENU
+                    continue
+                if event.key in (pygame.K_F11, pygame.K_f):
+                    toggle_fullscreen()
                     continue
                 if event.key == pygame.K_r and mode != MODE_MENU:
                     new_game(mode)
@@ -901,38 +944,29 @@ def main():
                             mode = m
                             new_game(m)
                             break
-                continue  # skip game logic while in menu
+                continue
 
-            # ── In-game keyboard input ─────────────────────────────────────
-            if event.type == pygame.KEYDOWN and not game_over:
-                # Block keyboard control during AI turn
-                if mode == MODE_AI and turn == "black":
-                    pass
-                else:
+            # ── In-game keyboard ──────────────────────────────────────────
+            if event.type == pygame.KEYDOWN and board and not game_over:
+                if not (mode == MODE_AI and turn == "black"):
+                    kn = pygame.key.name(event.key).upper()
                     if event.key in (
                         pygame.K_UP,
                         pygame.K_DOWN,
                         pygame.K_LEFT,
                         pygame.K_RIGHT,
                     ):
-                        dr = {"UP": -1, "DOWN": 1}.get(
-                            pygame.key.name(event.key).upper(), 0
-                        )
-                        dc = {"LEFT": -1, "RIGHT": 1}.get(
-                            pygame.key.name(event.key).upper(), 0
-                        )
-                        # Arrow keys move in visual direction
+                        dr = {"UP": -1, "DOWN": 1}.get(kn, 0)
+                        dc = {"LEFT": -1, "RIGHT": 1}.get(kn, 0)
                         if flipped:
                             dr, dc = -dr, -dc
                         nr = max(0, min(7, cursor[0] + dr))
                         nc = max(0, min(7, cursor[1] + dc))
                         cursor = (nr, nc)
-                        # Update tip in learning mode
                         if mode == MODE_LEARNING and board[nr][nc]:
                             tip_text = PIECE_TIPS.get(piece_type(board[nr][nc]), "")
                         else:
                             tip_text = ""
-
                     elif event.key in (pygame.K_RETURN, pygame.K_SPACE):
                         r, c = cursor
                         clicked = board[r][c]
@@ -972,26 +1006,21 @@ def main():
                                 )
                                 if mode == MODE_LEARNING:
                                     tip_text = PIECE_TIPS.get(piece_type(clicked), "")
-
                     elif event.key == pygame.K_ESCAPE:
                         selected = None
                         possible_moves = []
                         tip_text = ""
 
-            # ── Mouse events (game) ────────────────────────────────────────
-            if mode != MODE_MENU and not game_over:
-                # Block mouse during AI turn
-                if mode == MODE_AI and turn == "black":
-                    pass
-                else:
+            # ── Mouse (game) ───────────────────────────────────────────────
+            if mode != MODE_MENU and board and not game_over:
+                if not (mode == MODE_AI and turn == "black"):
                     if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                        cell = pixel_to_cell(mx, my, flipped)
+                        cell = pixel_to_cell(mx, my, flipped, L)
                         if cell is None:
                             continue
                         r, c = cell
                         clicked = board[r][c]
-                        cursor = cell  # sync cursor to mouse
-
+                        cursor = cell
                         if selected:
                             if cell in possible_moves:
                                 last_move, castling_rights, notation = execute_move(
@@ -1040,9 +1069,8 @@ def main():
 
                     if event.type == pygame.MOUSEMOTION:
                         drag_pos = (mx, my)
-                        # Update learning tip on hover
                         if mode == MODE_LEARNING and not selected:
-                            cell = pixel_to_cell(mx, my, flipped)
+                            cell = pixel_to_cell(mx, my, flipped, L)
                             if cell and board[cell[0]][cell[1]]:
                                 tip_text = PIECE_TIPS.get(
                                     piece_type(board[cell[0]][cell[1]]), ""
@@ -1056,7 +1084,7 @@ def main():
                         and dragging
                     ):
                         dragging = False
-                        cell = pixel_to_cell(mx, my, flipped)
+                        cell = pixel_to_cell(mx, my, flipped, L)
                         if (
                             cell
                             and selected
@@ -1076,62 +1104,52 @@ def main():
                             )
 
         # ── Render ────────────────────────────────────────────────────────
+        # Make sure screen matches display (handles OS-driven resize on some platforms)
+        sw, sh = screen.get_size()
+        if sw != L.win_w or sh != L.win_h:
+            apply_new_size(sw, sh)
+
         if mode == MODE_MENU:
-            menu_rects = draw_menu(screen, menu_fonts, menu_hovered)
+            menu_rects = draw_menu(screen, fonts, menu_hovered, L)
         else:
-            draw_board(screen)
-            draw_highlights(
-                screen, selected, possible_moves, last_move, cursor, flipped
-            )
-            draw_coordinates(screen, font, flipped)
+            draw_board(screen, L)
+            if board:
+                draw_highlights(
+                    screen, selected, possible_moves, last_move, cursor, flipped, L
+                )
+            draw_coordinates(screen, fonts, flipped, L)
 
             skip = drag_from if dragging else None
-            if use_svg:
-                draw_pieces(screen, board, pieces, flipped, skip=skip)
-            else:
-                draw_fallback_pieces(screen, board, font_large, flipped, skip=skip)
+            if board:
+                if use_svg:
+                    draw_pieces(screen, board, pieces, flipped, L, skip=skip)
+                else:
+                    draw_fallback_pieces(screen, board, fonts, flipped, L, skip=skip)
 
-            # Dragged piece under cursor
             if dragging and drag_piece_key:
                 if use_svg and drag_piece_key in pieces:
                     img = pieces[drag_piece_key]
                     screen.blit(img, img.get_rect(center=drag_pos))
                 elif not use_svg:
-                    syms = {
-                        "white_king": "♔",
-                        "white_queen": "♕",
-                        "white_rook": "♖",
-                        "white_bishop": "♗",
-                        "white_knight": "♘",
-                        "white_pawn": "♙",
-                        "black_king": "♚",
-                        "black_queen": "♛",
-                        "black_rook": "♜",
-                        "black_bishop": "♝",
-                        "black_knight": "♞",
-                        "black_pawn": "♟",
-                    }
-                    surf = font_large.render(
-                        syms.get(drag_piece_key, "?"), True, (30, 30, 30)
+                    surf = fonts["piece"].render(
+                        PIECE_SYMBOLS.get(drag_piece_key, "?"), True, (30, 30, 30)
                     )
                     screen.blit(surf, surf.get_rect(center=drag_pos))
 
-            # Mode badge
             badges = {MODE_PVP: "PvP", MODE_AI: "vs AI", MODE_LEARNING: "Learning"}
-            badge = font_sub.render(badges.get(mode, ""), True, (120, 120, 120))
-            screen.blit(badge, (BOARD_W - badge.get_width() - 8, 6))
+            badge = fonts["sub"].render(badges.get(mode, ""), True, (120, 120, 120))
+            screen.blit(badge, (L.board_w - badge.get_width() - 8, 6))
 
-            draw_status(screen, font, status_msg)
-
-            if mode == MODE_LEARNING:
-                draw_tip(screen, font_tip, tip_text)
-
-            scroll_offset = draw_move_panel(
-                screen, font_panel, font_header, move_history, scroll_offset
-            )
-
-            if game_over:
-                draw_gameover_overlay(screen, font_over, font_sub, status_msg)
+            if status_msg:
+                draw_status(screen, fonts, status_msg, L)
+            if mode == MODE_LEARNING and tip_text:
+                draw_tip(screen, fonts, tip_text, L)
+            if move_history is not None:
+                scroll_offset = draw_move_panel(
+                    screen, fonts, move_history, scroll_offset, L
+                )
+            if game_over and status_msg:
+                draw_gameover_overlay(screen, fonts, status_msg, L)
 
         pygame.display.flip()
         clock.tick(60)
