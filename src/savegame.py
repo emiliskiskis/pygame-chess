@@ -1,8 +1,9 @@
 """
 savegame.py — Per-mode game state persistence.
 
-Each saveable game mode gets its own JSON file stored alongside prefs.dat
-in the project root. The file name is save_<mode>.json.
+Each saveable game mode gets its own JSON file stored under saves/ in the
+project root. The directory is created automatically on first write.
+The file name is saves/save_<mode>.json.
 
 Saveable modes: pvp, ai, learning, ml_ai
 NOT saved: ml_self (spectator-only automated mode)
@@ -11,7 +12,7 @@ NOT saved: ml_self (spectator-only automated mode)
 import json
 from pathlib import Path
 
-_SAVE_DIR = Path(__file__).parent.parent
+_SAVE_DIR = Path(__file__).parent.parent / "saves"
 
 SAVEABLE_MODES = {"pvp", "ai", "learning", "ml_ai"}
 
@@ -40,6 +41,7 @@ def save_game(mode, board, turn, last_move, castling_rights, move_history, flipp
         "flipped": flipped,
     }
     try:
+        _SAVE_DIR.mkdir(exist_ok=True)
         _SAVE_FILES[mode].write_text(json.dumps(data, indent=2), encoding="utf-8")
     except OSError:
         pass

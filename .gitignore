@@ -219,3 +219,4 @@ __marimo__/
 
 # ML model weights
 models/*.pt
+saves/
