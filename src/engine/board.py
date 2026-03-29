@@ -257,7 +257,7 @@ def post_move_status(board, turn, last_move, castling_rights, mode=None):
     if is_in_check(board, turn):
         player_name = S.PANEL_COL_WHITE if turn == "white" else S.PANEL_COL_BLACK
         return S.STATUS_CHECK.format(player=player_name), False
-    if mode == "ai":
+    if mode in ("ai", "ml_ai"):
         return (S.STATUS_YOUR_TURN if turn == "white" else S.STATUS_AI_TURN), False
     player_name = S.PANEL_COL_WHITE if turn == "white" else S.PANEL_COL_BLACK
     return S.STATUS_TURN.format(player=player_name), False

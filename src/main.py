@@ -20,6 +20,7 @@ from .constants import (
     MODE_LANG_SELECT,
     MODE_MENU,
     MODE_AI,
+    MODE_ML_AI,
     MODE_LEARNING,
 )
 from . import strings
@@ -36,6 +37,7 @@ from .engine.board import (
     post_move_status,
 )
 from .engine.ai import ai_move
+from .engine.ml_ai import ml_ai_move, record_position, train_on_game, clear_game_history
 from .engine.notation import parse_algebraic
 from .ui.rendering import (
     pixel_to_cell,
@@ -125,7 +127,9 @@ def main():
             "white": {"kingside": True, "queenside": True},
             "black": {"kingside": True, "queenside": True},
         }
-        status_msg = S.STATUS_YOUR_TURN if new_mode == MODE_AI else S.STATUS_WHITE_TURN
+        if new_mode == MODE_ML_AI:
+            clear_game_history()
+        status_msg = S.STATUS_YOUR_TURN if new_mode in (MODE_AI, MODE_ML_AI) else S.STATUS_WHITE_TURN
         game_over = False
         move_history = []
         flipped = False
@@ -164,6 +168,9 @@ def main():
     def do_move(from_sq, to_sq):
         nonlocal last_move, castling_rights, turn, selected, possible_moves
         nonlocal status_msg, game_over, tip_text, bar_text, bar_error
+        # Record position before executing (for ML training)
+        if mode == MODE_ML_AI:
+            record_position(board, turn, castling_rights, last_move, from_sq, to_sq)
         last_move, castling_rights, notation = execute_move(
             board, from_sq, to_sq, last_move, castling_rights, turn
         )
@@ -177,6 +184,14 @@ def main():
         status_msg, game_over = post_move_status(
             board, turn, last_move, castling_rights, mode
         )
+        # Train ML model when game ends
+        if game_over and mode == MODE_ML_AI:
+            if S.STATUS_CHECKMATE.split("{")[0] in status_msg:
+                winner = opponent(turn)  # turn is now the loser's turn
+                result = 1.0 if winner == "white" else -1.0
+            else:
+                result = 0.0
+            train_on_game(result)
 
     # ── Main loop ──────────────────────────────────────────────────────────
     while True:
@@ -188,7 +203,7 @@ def main():
             apply_new_size(*pending_size)
             pending_size = None
 
-        # AI turn
+        # AI turn (minimax)
         if (
             mode == MODE_AI
             and board
@@ -206,6 +221,27 @@ def main():
             def _run_ai():
                 ai_result[0] = ai_move(_board_snap, _lm_snap, _cr_snap, ai_progress)
             ai_thread = threading.Thread(target=_run_ai, daemon=True)
+            ai_thread.start()
+            ai_thinking = True
+
+        # AI turn (ML)
+        if (
+            mode == MODE_ML_AI
+            and board
+            and turn == "black"
+            and not game_over
+            and not ai_thinking
+            and not paused
+        ):
+            ai_progress[0] = 0
+            ai_progress[1] = 1
+            ai_result[0] = None
+            _board_snap = board
+            _lm_snap = last_move
+            _cr_snap = castling_rights
+            def _run_ml_ai():
+                ai_result[0] = ml_ai_move(_board_snap, _lm_snap, _cr_snap, ai_progress)
+            ai_thread = threading.Thread(target=_run_ml_ai, daemon=True)
             ai_thread.start()
             ai_thinking = True
 
@@ -357,7 +393,7 @@ def main():
                 continue
 
             # ── In-game ───────────────────────────────────────────────────
-            block = mode == MODE_AI and turn == "black"
+            block = mode in (MODE_AI, MODE_ML_AI) and turn == "black"
 
             if event.type == pygame.KEYDOWN and not block:
                 # Escape: clear bar first, then pause
@@ -559,14 +595,14 @@ def main():
                     )
                     screen.blit(surf, surf.get_rect(center=drag_pos))
 
-            badges = {"pvp": S.BADGE_PVP, "ai": S.BADGE_AI, "learning": S.BADGE_LEARNING}
+            badges = {"pvp": S.BADGE_PVP, "ai": S.BADGE_AI, "learning": S.BADGE_LEARNING, "ml_ai": S.BADGE_ML_AI}
             badge = fonts["sub"].render(badges.get(mode, ""), True, (120, 120, 120))
             screen.blit(badge, (L.board_w - badge.get_width() - 8, 6))
 
             if status_msg:
                 draw_status(screen, fonts, status_msg, L)
 
-            if mode == MODE_AI and ai_thinking:
+            if mode in (MODE_AI, MODE_ML_AI) and ai_thinking:
                 draw_ai_progress(screen, ai_progress, L)
 
             if mode == MODE_LEARNING and tip_text:

@@ -15,10 +15,13 @@
   "menu_ai_desc": "Jouez contre l'ordinateur (noirs)",
   "menu_learning_label": "Mode Apprentissage",
   "menu_learning_desc": "Indices, conseils et explications des coups",
+  "menu_ml_ai_label": "Joueur contre IA ML",
+  "menu_ml_ai_desc": "Jouez contre un réseau de neurones qui apprend",
 
   "badge_pvp": "JcJ",
   "badge_ai": "vs IA",
   "badge_learning": "Apprentissage",
+  "badge_ml_ai": "vs IA ML",
 
   "panel_header": "Coups",
   "panel_col_number": "N°",

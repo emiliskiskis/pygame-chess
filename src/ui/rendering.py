@@ -20,6 +20,7 @@ from ..constants import (
     MODE_PVP,
     MODE_AI,
     MODE_LEARNING,
+    MODE_ML_AI,
 )
 from ..strings import S
 from ..engine.pieces import FLAG_W, FLAG_H
@@ -354,6 +355,7 @@ def draw_menu(screen, fonts, hovered, L):
         (MODE_PVP,      S.MENU_PVP_LABEL,      S.MENU_PVP_DESC,      "♙", (255, 215,  50)),
         (MODE_AI,       S.MENU_AI_LABEL,       S.MENU_AI_DESC,       "♟", (255,  90,  90)),
         (MODE_LEARNING, S.MENU_LEARNING_LABEL, S.MENU_LEARNING_DESC, "♗", ( 80, 200, 255)),
+        (MODE_ML_AI,   S.MENU_ML_AI_LABEL,   S.MENU_ML_AI_DESC,   "♚", (180, 120, 255)),
     ]
     bw = min(460, L.window_w - 80)
     bh = max(50, L.tile - 10)

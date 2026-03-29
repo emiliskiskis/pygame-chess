@@ -15,10 +15,13 @@
   "menu_ai_desc": "Play against the computer (black)",
   "menu_learning_label": "Learning Mode",
   "menu_learning_desc": "Hints, tips and move explanations",
+  "menu_ml_ai_label": "Player vs ML AI",
+  "menu_ml_ai_desc": "Play against a learning neural network",
 
   "badge_pvp": "PvP",
   "badge_ai": "vs AI",
   "badge_learning": "Learning",
+  "badge_ml_ai": "vs ML AI",
 
   "panel_header": "Moves",
   "panel_col_number": "#",

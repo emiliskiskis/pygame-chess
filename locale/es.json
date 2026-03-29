@@ -15,10 +15,13 @@
   "menu_ai_desc": "Juega contra el ordenador (negras)",
   "menu_learning_label": "Modo Aprendizaje",
   "menu_learning_desc": "Pistas, consejos y explicaciones de movimientos",
+  "menu_ml_ai_label": "Jugador contra IA ML",
+  "menu_ml_ai_desc": "Juega contra una red neuronal que aprende",
 
   "badge_pvp": "JcJ",
   "badge_ai": "vs IA",
   "badge_learning": "Aprendizaje",
+  "badge_ml_ai": "vs IA ML",
 
   "panel_header": "Movimientos",
   "panel_col_number": "N°",

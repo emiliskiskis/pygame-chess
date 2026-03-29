@@ -66,11 +66,14 @@ class S:
     MENU_AI_DESC = ""
     MENU_LEARNING_LABEL = ""
     MENU_LEARNING_DESC = ""
+    MENU_ML_AI_LABEL = ""
+    MENU_ML_AI_DESC = ""
 
     # Badges
     BADGE_PVP = ""
     BADGE_AI = ""
     BADGE_LEARNING = ""
+    BADGE_ML_AI = ""
 
     # Move panel
     PANEL_HEADER = ""
@@ -131,9 +134,12 @@ def reload(locale="en", save=True):
     S.MENU_AI_DESC = d["menu_ai_desc"]
     S.MENU_LEARNING_LABEL = d["menu_learning_label"]
     S.MENU_LEARNING_DESC = d["menu_learning_desc"]
+    S.MENU_ML_AI_LABEL = d.get("menu_ml_ai_label", "Player vs ML AI")
+    S.MENU_ML_AI_DESC = d.get("menu_ml_ai_desc", "Play against a learning neural network")
     S.BADGE_PVP = d["badge_pvp"]
     S.BADGE_AI = d["badge_ai"]
     S.BADGE_LEARNING = d["badge_learning"]
+    S.BADGE_ML_AI = d.get("badge_ml_ai", "vs ML AI")
     S.PANEL_HEADER = d["panel_header"]
     S.PANEL_COL_NUMBER = d["panel_col_number"]
     S.PANEL_COL_WHITE = d["panel_col_white"]

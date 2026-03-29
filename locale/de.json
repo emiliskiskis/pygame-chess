@@ -15,10 +15,13 @@
   "menu_ai_desc": "Spielen Sie gegen den Computer (Schwarz)",
   "menu_learning_label": "Lernmodus",
   "menu_learning_desc": "Hinweise, Tipps und Zugerklärungen",
+  "menu_ml_ai_label": "Spieler gegen ML-KI",
+  "menu_ml_ai_desc": "Gegen ein lernendes neuronales Netz spielen",
 
   "badge_pvp": "SgS",
   "badge_ai": "vs KI",
   "badge_learning": "Lernen",
+  "badge_ml_ai": "vs ML-KI",
 
   "panel_header": "Züge",
   "panel_col_number": "Nr.",

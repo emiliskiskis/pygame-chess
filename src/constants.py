@@ -27,6 +27,7 @@ MODE_MENU = "menu"
 MODE_PVP = "pvp"
 MODE_AI = "ai"
 MODE_LEARNING = "learning"
+MODE_ML_AI = "ml_ai"
 
 
 PIECE_SYMBOLS = {

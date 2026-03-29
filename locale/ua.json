@@ -15,10 +15,13 @@
   "menu_ai_desc": "Грайте проти комп'ютера (чорні)",
   "menu_learning_label": "Режим навчання",
   "menu_learning_desc": "Підказки, поради та пояснення ходів",
+  "menu_ml_ai_label": "Гравець проти ML ШІ",
+  "menu_ml_ai_desc": "Грайте проти нейронної мережі, що навчається",
 
   "badge_pvp": "ГпГ",
   "badge_ai": "проти ШІ",
   "badge_learning": "Навчання",
+  "badge_ml_ai": "проти ML ШІ",
 
   "panel_header": "Ходи",
   "panel_col_number": "№",

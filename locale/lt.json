@@ -15,10 +15,13 @@
   "menu_ai_desc": "Žaiskite prieš kompiuterį (juodieji)",
   "menu_learning_label": "Mokymosi režimas",
   "menu_learning_desc": "Užuominos, patarimai ir ėjimų paaiškinimai",
+  "menu_ml_ai_label": "Žaidėjas prieš ML DI",
+  "menu_ml_ai_desc": "Žaiskite prieš besimokantį neuroninį tinklą",
 
   "badge_pvp": "ŽpŽ",
   "badge_ai": "prieš DI",
   "badge_learning": "Mokymasis",
+  "badge_ml_ai": "prieš ML DI",
 
   "panel_header": "Ėjimai",
   "panel_col_number": "Nr.",
