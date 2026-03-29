@@ -51,10 +51,24 @@
   "status_your_turn": "Du bist dran",
   "status_ai_turn": "KI ist am Zug",
 
-  "tip_pawn":   "Bauern ziehen 1 Feld vor (2 vom Start) und schlagen diagonal.",
+  "tip_pawn": "Bauern ziehen 1 Feld vor (2 vom Start) und schlagen diagonal.",
   "tip_knight": "Springer ziehen im L-förmigen Weg und können über Figuren springen.",
   "tip_bishop": "Läufer gleiten diagonal beliebig viele Felder.",
-  "tip_rook":   "Türme gleiten horizontal oder vertikal beliebig viele Felder.",
-  "tip_queen":  "Die Dame vereint Turm und Läufer – die stärkste Figur.",
-  "tip_king":   "Der König zieht 1 Feld in jede Richtung. Schütze deinen!"
+  "tip_rook": "Türme gleiten horizontal oder vertikal beliebig viele Felder.",
+  "tip_queen": "Die Dame vereint Turm und Läufer – die stärkste Figur.",
+  "tip_king": "Der König zieht 1 Feld in jede Richtung. Schütze deinen!",
+
+  "menu_ml_self_label": "ML gegen ML",
+  "menu_ml_self_desc": "Schau dem Modell beim Spielen gegen sich selbst zu",
+  "badge_ml_self": "ML vs ML",
+  "ml_self_delay": "Verzögerung: {ms}ms",
+  "ml_self_speed_hint": "+/- Geschwindigkeit ändern",
+
+  "ml_over_training": "Training läuft…",
+  "ml_over_training_done": "Training abgeschlossen",
+  "ml_over_elo": "ELO: {elo}",
+  "ml_over_record": "{wins}S  {draws}U  {losses}N",
+  "ml_over_games": "Spiele: {games}",
+  "ml_over_game_length": "Züge: {moves}",
+  "ml_over_confidence": "Letzte Bewertung: {val:+.2f}"
 }

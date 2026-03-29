@@ -51,6 +51,20 @@
   "status_your_turn": "Your turn",
   "status_ai_turn": "AI's turn",
 
+  "menu_ml_self_label": "ML vs ML",
+  "menu_ml_self_desc": "Watch the model play against itself",
+  "badge_ml_self": "ML vs ML",
+  "ml_self_delay": "Delay: {ms}ms",
+  "ml_self_speed_hint": "+/- to change speed",
+
+  "ml_over_training": "Training…",
+  "ml_over_training_done": "Training complete",
+  "ml_over_elo": "ELO: {elo}",
+  "ml_over_record": "{wins}W  {draws}D  {losses}L",
+  "ml_over_games": "Games: {games}",
+  "ml_over_game_length": "Moves: {moves}",
+  "ml_over_confidence": "Last eval: {val:+.2f}",
+
   "tip_pawn": "Pawns move forward 1 square (2 from start) and capture diagonally.",
   "tip_knight": "Knights move in an L-shape and can jump over pieces.",
   "tip_bishop": "Bishops slide diagonally any number of squares.",

@@ -28,6 +28,7 @@ MODE_PVP = "pvp"
 MODE_AI = "ai"
 MODE_LEARNING = "learning"
 MODE_ML_AI = "ml_ai"
+MODE_ML_SELF = "ml_self"
 
 
 PIECE_SYMBOLS = {

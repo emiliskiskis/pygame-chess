@@ -51,10 +51,24 @@
   "status_your_turn": "Jūsų ėjimas",
   "status_ai_turn": "DI ėjimas",
 
-  "tip_pawn":   "Pėstininkai juda 1 laukelį pirmyn (2 iš pradžių) ir kerta įstrižai.",
+  "tip_pawn": "Pėstininkai juda 1 laukelį pirmyn (2 iš pradžių) ir kerta įstrižai.",
   "tip_knight": "Žirgai juda L formos keliu ir gali peršokti per figūras.",
   "tip_bishop": "Rikiai slysta įstrižai bet kiek laukelių.",
-  "tip_rook":   "Bokštai slysta horizontaliai arba vertikaliai bet kiek laukelių.",
-  "tip_queen":  "Karalienė sujungia bokštą ir rikį – galingiausia figūra.",
-  "tip_king":   "Karalius juda 1 laukelį bet kuria kryptimi. Saugokite savo!"
+  "tip_rook": "Bokštai slysta horizontaliai arba vertikaliai bet kiek laukelių.",
+  "tip_queen": "Karalienė sujungia bokštą ir rikį – galingiausia figūra.",
+  "tip_king": "Karalius juda 1 laukelį bet kuria kryptimi. Saugokite savo!",
+
+  "menu_ml_self_label": "ML prieš ML",
+  "menu_ml_self_desc": "Žiūrėkite, kaip modelis žaidžia prieš save",
+  "badge_ml_self": "ML vs ML",
+  "ml_self_delay": "Vėlinimas: {ms}ms",
+  "ml_self_speed_hint": "+/- keisti greitį",
+
+  "ml_over_training": "Mokoma…",
+  "ml_over_training_done": "Mokymasis baigtas",
+  "ml_over_elo": "ELO: {elo}",
+  "ml_over_record": "{wins}L  {draws}Ly  {losses}P",
+  "ml_over_games": "Partijos: {games}",
+  "ml_over_game_length": "Ėjimai: {moves}",
+  "ml_over_confidence": "Pask. įvert.: {val:+.2f}"
 }

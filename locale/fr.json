@@ -51,10 +51,24 @@
   "status_your_turn": "Votre tour",
   "status_ai_turn": "Tour de l'IA",
 
-  "tip_pawn":   "Les pions avancent d'une case (2 au départ) et capturent en diagonale.",
+  "menu_ml_self_label": "ML vs ML",
+  "menu_ml_self_desc": "Regardez le modèle jouer contre lui-même",
+  "badge_ml_self": "ML vs ML",
+  "ml_self_delay": "Délai : {ms}ms",
+  "ml_self_speed_hint": "+/- changer la vitesse",
+
+  "tip_pawn": "Les pions avancent d'une case (2 au départ) et capturent en diagonale.",
   "tip_knight": "Les cavaliers se déplacent en L et peuvent sauter par-dessus les pièces.",
   "tip_bishop": "Les fous glissent en diagonale sur autant de cases que souhaité.",
-  "tip_rook":   "Les tours glissent horizontalement ou verticalement sur autant de cases que souhaité.",
-  "tip_queen":  "La reine combine tour et fou – la pièce la plus puissante.",
-  "tip_king":   "Le roi se déplace d'une case dans n'importe quelle direction. Protégez le vôtre !"
+  "tip_rook": "Les tours glissent horizontalement ou verticalement sur autant de cases que souhaité.",
+  "tip_queen": "La reine combine tour et fou – la pièce la plus puissante.",
+  "tip_king": "Le roi se déplace d'une case dans n'importe quelle direction. Protégez le vôtre !",
+
+  "ml_over_training": "Entraînement…",
+  "ml_over_training_done": "Entraînement terminé",
+  "ml_over_elo": "ELO : {elo}",
+  "ml_over_record": "{wins}V  {draws}N  {losses}D",
+  "ml_over_games": "Parties : {games}",
+  "ml_over_game_length": "Coups : {moves}",
+  "ml_over_confidence": "Dernière éval. : {val:+.2f}"
 }

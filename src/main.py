@@ -15,49 +15,60 @@ import threading
 
 import pygame
 
+from . import strings
 from .constants import (
     ASSET_DIR,
-    MODE_LANG_SELECT,
-    MODE_MENU,
     MODE_AI,
-    MODE_ML_AI,
+    MODE_LANG_SELECT,
     MODE_LEARNING,
-)
-from . import strings
-from .strings import S, reload as reload_strings, available_locales, prefs_exist
-from .ui.layout import Layout
-from .engine.pieces import load_pieces, reload_pieces, load_flags
-from .engine.board import (
-    starting_board,
-    piece_color,
-    piece_type,
-    opponent,
-    legal_moves,
-    execute_move,
-    post_move_status,
+    MODE_MENU,
+    MODE_ML_AI,
+    MODE_ML_SELF,
 )
 from .engine.ai import ai_move
-from .engine.ml_ai import ml_ai_move, record_position, train_on_game, clear_game_history
+from .engine.board import (
+    execute_move,
+    legal_moves,
+    opponent,
+    piece_color,
+    piece_type,
+    post_move_status,
+    starting_board,
+)
+from .engine.ml_ai import (
+    clear_game_history,
+    get_stats,
+    ml_ai_move,
+    ml_ai_move_for,
+    record_game_result,
+    record_position,
+    start_training_async,
+)
 from .engine.notation import parse_algebraic
+from .engine.pieces import load_flags, load_pieces, reload_pieces
+from .strings import S, available_locales, prefs_exist
+from .strings import reload as reload_strings
+from .ui.layout import Layout
 from .ui.rendering import (
-    pixel_to_cell,
-    make_fonts,
+    PIECE_SYMBOLS,
+    draw_ai_progress,
     draw_board,
     draw_coordinates,
-    draw_highlights,
-    draw_pieces,
     draw_fallback_pieces,
-    draw_status,
-    draw_tip,
-    draw_notation_bar,
-    draw_move_panel,
-    draw_menu,
-    draw_pause_menu,
     draw_gameover_overlay,
+    draw_highlights,
     draw_lang_picker,
     draw_lang_select,
-    draw_ai_progress,
-    PIECE_SYMBOLS,
+    draw_menu,
+    draw_move_panel,
+    draw_notation_bar,
+    draw_pause_menu,
+    draw_pieces,
+    draw_self_play_speed,
+    draw_status,
+    draw_tip,
+    make_fonts,
+    pixel_to_cell,
 )
 
 
@@ -112,12 +123,29 @@ def main():
     drag_piece_key = drag_from = None
     drag_pos = (0, 0)
 
+    training = False
+    training_thread = None
+    training_progress = [0, 0]
+
+    # ML self-play state
+    self_play_delay_ms = 500  # ms pause between moves; 0 = as fast as threads allow
+    last_move_time = 0  # pygame ticks when the last self-play move finished
+
     def new_game(new_mode):
         nonlocal board, turn, selected, possible_moves, last_move
         nonlocal castling_rights, status_msg, game_over, move_history
-        nonlocal flipped, cursor, tip_text, ai_thinking, ai_thread, ai_result, ai_progress
+        nonlocal \
+            flipped, \
+            cursor, \
+            tip_text, \
+            ai_thinking, \
+            ai_thread, \
+            ai_result, \
+            ai_progress
         nonlocal bar_text, bar_error, paused, over_hovered, over_rects
         nonlocal pause_hovered, pause_rects
+        nonlocal training, training_thread, training_progress
+        nonlocal last_move_time
         board = starting_board()
         turn = "white"
         selected = None
@@ -127,9 +155,13 @@ def main():
             "white": {"kingside": True, "queenside": True},
             "black": {"kingside": True, "queenside": True},
         }
-        if new_mode == MODE_ML_AI:
+        if new_mode in (MODE_ML_AI, MODE_ML_SELF):
             clear_game_history()
-        status_msg = S.STATUS_YOUR_TURN if new_mode in (MODE_AI, MODE_ML_AI) else S.STATUS_WHITE_TURN
+        status_msg = (
+            S.STATUS_YOUR_TURN
+            if new_mode in (MODE_AI, MODE_ML_AI)
+            else S.STATUS_WHITE_TURN
+        )
         game_over = False
         move_history = []
         flipped = False
@@ -146,6 +178,10 @@ def main():
         over_rects = {}
         pause_hovered = None
         pause_rects = {}
+        training = False
+        training_thread = None
+        training_progress = [0, 0]
+        last_move_time = 0
 
     def apply_new_size(w, h):
         nonlocal L, fonts, pieces, use_svg, last_tile
@@ -168,8 +204,9 @@ def main():
     def do_move(from_sq, to_sq):
         nonlocal last_move, castling_rights, turn, selected, possible_moves
         nonlocal status_msg, game_over, tip_text, bar_text, bar_error
+        nonlocal training, training_thread, last_move_time
         # Record position before executing (for ML training)
-        if mode == MODE_ML_AI:
+        if mode in (MODE_ML_AI, MODE_ML_SELF):
             record_position(board, turn, castling_rights, last_move, from_sq, to_sq)
         last_move, castling_rights, notation = execute_move(
             board, from_sq, to_sq, last_move, castling_rights, turn
@@ -184,14 +221,22 @@ def main():
         status_msg, game_over = post_move_status(
             board, turn, last_move, castling_rights, mode
         )
-        # Train ML model when game ends
-        if game_over and mode == MODE_ML_AI:
+        # Update ELO immediately; start background training thread when game ends
+        if game_over and mode in (MODE_ML_AI, MODE_ML_SELF):
             if S.STATUS_CHECKMATE.split("{")[0] in status_msg:
                 winner = opponent(turn)  # turn is now the loser's turn
-                result = 1.0 if winner == "white" else -1.0
+                ml_result = 1.0 if winner == "white" else -1.0
             else:
-                result = 0.0
-            train_on_game(result)
+                ml_result = 0.0
+            if mode == MODE_ML_AI:
+                # Only update ELO for human-vs-AI games
+                record_game_result(ml_result)
+            training = True
+            training_thread = start_training_async(ml_result, training_progress)
+
+        # Track when this move finished so self-play can honour the delay
+        if mode == MODE_ML_SELF:
+            last_move_time = pygame.time.get_ticks()
 
     # ── Main loop ──────────────────────────────────────────────────────────
     while True:
@@ -202,6 +247,30 @@ def main():
         if pending_size and now >= resize_timer:
             apply_new_size(*pending_size)
             pending_size = None
+
+        # ── ML self-play: trigger AI move for whichever colour is to move ──
+        if (
+            mode == MODE_ML_SELF
+            and board
+            and not game_over
+            and not ai_thinking
+            and not paused
+            and now - last_move_time >= self_play_delay_ms
+        ):
+            ai_result[0] = None
+            _board_snap = board
+            _lm_snap = last_move
+            _cr_snap = castling_rights
+            _turn_snap = turn
+
+            def _run_self_play():
+                ai_result[0] = ml_ai_move_for(
+                    _board_snap, _turn_snap, _lm_snap, _cr_snap, ai_progress
+                )
+
+            ai_thread = threading.Thread(target=_run_self_play, daemon=True)
+            ai_thread.start()
+            ai_thinking = True
 
         # AI turn (minimax)
         if (
@@ -218,8 +287,10 @@ def main():
             _board_snap = board
             _lm_snap = last_move
             _cr_snap = castling_rights
+
             def _run_ai():
                 ai_result[0] = ai_move(_board_snap, _lm_snap, _cr_snap, ai_progress)
+
             ai_thread = threading.Thread(target=_run_ai, daemon=True)
             ai_thread.start()
             ai_thinking = True
@@ -239,8 +310,10 @@ def main():
             _board_snap = board
             _lm_snap = last_move
             _cr_snap = castling_rights
+
             def _run_ml_ai():
                 ai_result[0] = ml_ai_move(_board_snap, _lm_snap, _cr_snap, ai_progress)
+
             ai_thread = threading.Thread(target=_run_ml_ai, daemon=True)
             ai_thread.start()
             ai_thinking = True
@@ -251,6 +324,11 @@ def main():
             move = ai_result[0]
             if move:
                 do_move((move[0], move[1]), (move[2], move[3]))
+
+        # Training thread — clear flag once the background job finishes
+        if training and training_thread is not None and not training_thread.is_alive():
+            training = False
+            training_thread = None
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -392,6 +470,24 @@ def main():
                             break
                 continue
 
+            # ── ML self-play: spectator controls only ────────────────────
+            if mode == MODE_ML_SELF and not game_over and not paused:
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_ESCAPE:
+                        paused = True
+                        pause_hovered = None
+                        lang_open = False
+                        lang_hovered = None
+                    elif event.key in (
+                        pygame.K_PLUS,
+                        pygame.K_EQUALS,
+                        pygame.K_KP_PLUS,
+                    ):
+                        self_play_delay_ms = max(0, self_play_delay_ms - 50)
+                    elif event.key in (pygame.K_MINUS, pygame.K_KP_MINUS):
+                        self_play_delay_ms = min(2000, self_play_delay_ms + 50)
+                continue  # board is view-only in self-play
+
             # ── In-game ───────────────────────────────────────────────────
             block = mode in (MODE_AI, MODE_ML_AI) and turn == "black"
 
@@ -499,6 +595,9 @@ def main():
                     if selected:
                         if cell in possible_moves:
                             do_move(selected, cell)
+                            dragging = False
+                            drag_piece_key = None
+                            drag_from = None
                         elif clicked and piece_color(clicked) == turn:
                             selected = cell
                             possible_moves = legal_moves(
@@ -561,8 +660,14 @@ def main():
         elif mode == MODE_MENU:
             menu_rects = draw_menu(screen, fonts, menu_hovered, L)
             lang_rects = draw_lang_picker(
-                screen, fonts, flags, locales,
-                strings.CURRENT_LOCALE, lang_open, lang_hovered, L
+                screen,
+                fonts,
+                flags,
+                locales,
+                strings.CURRENT_LOCALE,
+                lang_open,
+                lang_hovered,
+                L,
             )
         else:
             draw_board(screen, L)
@@ -573,7 +678,13 @@ def main():
                         bar_text, board, turn, last_move, castling_rights
                     )
                 draw_highlights(
-                    screen, selected, possible_moves, last_move, cursor, flipped, L,
+                    screen,
+                    selected,
+                    possible_moves,
+                    last_move,
+                    cursor,
+                    flipped,
+                    L,
                     preview_move=bar_preview,
                 )
             draw_coordinates(screen, fonts, flipped, L)
@@ -595,7 +706,13 @@ def main():
                     )
                     screen.blit(surf, surf.get_rect(center=drag_pos))
 
-            badges = {"pvp": S.BADGE_PVP, "ai": S.BADGE_AI, "learning": S.BADGE_LEARNING, "ml_ai": S.BADGE_ML_AI}
+            badges = {
+                "pvp": S.BADGE_PVP,
+                "ai": S.BADGE_AI,
+                "learning": S.BADGE_LEARNING,
+                "ml_ai": S.BADGE_ML_AI,
+                "ml_self": S.BADGE_ML_SELF,
+            }
             badge = fonts["sub"].render(badges.get(mode, ""), True, (120, 120, 120))
             screen.blit(badge, (L.board_w - badge.get_width() - 8, 6))
 
@@ -605,6 +722,9 @@ def main():
             if mode in (MODE_AI, MODE_ML_AI) and ai_thinking:
                 draw_ai_progress(screen, ai_progress, L)
 
+            if mode == MODE_ML_SELF:
+                draw_self_play_speed(screen, fonts, self_play_delay_ms, L)
+
             if mode == MODE_LEARNING and tip_text:
                 draw_tip(screen, fonts, tip_text, L)
             else:
@@ -613,14 +733,36 @@ def main():
             draw_move_panel(screen, fonts, move_history or [], L)
 
             if game_over:
+                ml_data = None
+                if mode in (MODE_ML_AI, MODE_ML_SELF):
+                    ml_data = get_stats()
+                    ml_data["game_length"] = len(move_history) if move_history else 0
                 over_rects = draw_gameover_overlay(
-                    screen, fonts, status_msg, over_hovered, L
+                    screen,
+                    fonts,
+                    status_msg,
+                    over_hovered,
+                    L,
+                    ml_stats=ml_data,
+                    training_progress=(
+                        training_progress
+                        if mode in (MODE_ML_AI, MODE_ML_SELF)
+                        else None
+                    ),
+                    training_done=not training,
+                    self_play=mode == MODE_ML_SELF,
                 )
             elif paused:
                 pause_rects = draw_pause_menu(screen, fonts, pause_hovered, L)
                 lang_rects = draw_lang_picker(
-                    screen, fonts, flags, locales,
-                    strings.CURRENT_LOCALE, lang_open, lang_hovered, L
+                    screen,
+                    fonts,
+                    flags,
+                    locales,
+                    strings.CURRENT_LOCALE,
+                    lang_open,
+                    lang_hovered,
+                    L,
                 )
 
         pygame.display.flip()

@@ -40,11 +40,13 @@ def available_locales():
     for path in sorted(_LOCALE_DIR.glob("*.json")):
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
-            result.append((
-                path.stem,
-                data.get("_language", path.stem),
-                data.get("_lang_select_title", "Select Language"),
-            ))
+            result.append(
+                (
+                    path.stem,
+                    data.get("_language", path.stem),
+                    data.get("_lang_select_title", "Select Language"),
+                )
+            )
         except Exception:
             pass
     return result
@@ -111,6 +113,22 @@ class S:
     # Piece tips
     TIPS: dict = {}
 
+    # ML vs ML self-play
+    MENU_ML_SELF_LABEL = ""
+    MENU_ML_SELF_DESC = ""
+    BADGE_ML_SELF = ""
+    ML_SELF_DELAY = ""
+    ML_SELF_SPEED_HINT = ""
+
+    # ML AI game-over overlay
+    ML_OVER_TRAINING = ""
+    ML_OVER_TRAINING_DONE = ""
+    ML_OVER_ELO = ""
+    ML_OVER_RECORD = ""
+    ML_OVER_GAMES = ""
+    ML_OVER_GAME_LENGTH = ""
+    ML_OVER_CONFIDENCE = ""
+
 
 def reload(locale="en", save=True):
     """Load locale/<locale>.json into S. Falls back to en if missing."""
@@ -135,7 +153,9 @@ def reload(locale="en", save=True):
     S.MENU_LEARNING_LABEL = d["menu_learning_label"]
     S.MENU_LEARNING_DESC = d["menu_learning_desc"]
     S.MENU_ML_AI_LABEL = d.get("menu_ml_ai_label", "Player vs ML AI")
-    S.MENU_ML_AI_DESC = d.get("menu_ml_ai_desc", "Play against a learning neural network")
+    S.MENU_ML_AI_DESC = d.get(
+        "menu_ml_ai_desc", "Play against a learning neural network"
+    )
     S.BADGE_PVP = d["badge_pvp"]
     S.BADGE_AI = d["badge_ai"]
     S.BADGE_LEARNING = d["badge_learning"]
@@ -163,13 +183,27 @@ def reload(locale="en", save=True):
     S.STATUS_WHITE_TURN = d["status_white_turn"]
     S.STATUS_YOUR_TURN = d["status_your_turn"]
     S.STATUS_AI_TURN = d["status_ai_turn"]
+    S.MENU_ML_SELF_LABEL = d.get("menu_ml_self_label", "ML vs ML")
+    S.MENU_ML_SELF_DESC = d.get(
+        "menu_ml_self_desc", "Watch the model play against itself"
+    )
+    S.BADGE_ML_SELF = d.get("badge_ml_self", "ML vs ML")
+    S.ML_SELF_DELAY = d.get("ml_self_delay", "Delay: {ms}ms")
+    S.ML_SELF_SPEED_HINT = d.get("ml_self_speed_hint", "+/- to change speed")
+    S.ML_OVER_TRAINING = d.get("ml_over_training", "Training\u2026")
+    S.ML_OVER_TRAINING_DONE = d.get("ml_over_training_done", "Training complete")
+    S.ML_OVER_ELO = d.get("ml_over_elo", "ELO: {elo}")
+    S.ML_OVER_RECORD = d.get("ml_over_record", "{wins}W  {draws}D  {losses}L")
+    S.ML_OVER_GAMES = d.get("ml_over_games", "Games: {games}")
+    S.ML_OVER_GAME_LENGTH = d.get("ml_over_game_length", "Moves: {moves}")
+    S.ML_OVER_CONFIDENCE = d.get("ml_over_confidence", "Last eval: {val:+.2f}")
     S.TIPS = {
-        "pawn":   d["tip_pawn"],
+        "pawn": d["tip_pawn"],
         "knight": d["tip_knight"],
         "bishop": d["tip_bishop"],
-        "rook":   d["tip_rook"],
-        "queen":  d["tip_queen"],
-        "king":   d["tip_king"],
+        "rook": d["tip_rook"],
+        "queen": d["tip_queen"],
+        "king": d["tip_king"],
     }
 
 

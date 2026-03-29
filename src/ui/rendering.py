@@ -1,29 +1,30 @@
 import pygame
 
 from ..constants import (
-    FILES,
-    RANKS,
-    WHITE_TILE,
     BLACK_TILE,
-    HIGHLIGHT_COLOR,
-    SELECT_COLOR,
-    LAST_MOVE_COLOR,
-    CURSOR_COLOR,
-    PREVIEW_COLOR,
     BORDER_BG,
     COORD_COLOR,
-    PANEL_BG,
-    PANEL_HEADER,
-    PANEL_TEXT_W,
-    PANEL_TEXT_B,
-    PIECE_SYMBOLS,
-    MODE_PVP,
+    CURSOR_COLOR,
+    FILES,
+    HIGHLIGHT_COLOR,
+    LAST_MOVE_COLOR,
     MODE_AI,
     MODE_LEARNING,
     MODE_ML_AI,
+    MODE_ML_SELF,
+    MODE_PVP,
+    PANEL_BG,
+    PANEL_HEADER,
+    PANEL_TEXT_B,
+    PANEL_TEXT_W,
+    PIECE_SYMBOLS,
+    PREVIEW_COLOR,
+    RANKS,
+    SELECT_COLOR,
+    WHITE_TILE,
 )
+from ..engine.pieces import FLAG_H, FLAG_W
 from ..strings import S
-from ..engine.pieces import FLAG_W, FLAG_H
 
 
 def view_to_board(vr, vc, flipped):
@@ -49,19 +50,20 @@ def _best_font(candidates, size, bold=False):
             return pygame.font.SysFont(name, size, bold=bold)
     return pygame.font.Font(None, size)
 
+
 # Fonts with broad Unicode / chess-symbol coverage (tried in order)
 _SYMBOL = [
-    "segoeuisymbol",      # Windows
-    "notosanssymbols2",   # Linux (Noto)
+    "segoeuisymbol",  # Windows
+    "notosanssymbols2",  # Linux (Noto)
     "notosanssymbols",
-    "symbola",            # comprehensive Unicode font
+    "symbola",  # comprehensive Unicode font
     "dejavusans",
     "freesans",
 ]
 # Fonts for emoji (color emoji preferred, then symbol fallbacks)
 _EMOJI = [
-    "notocoloremoji",     # Linux
-    "seguiemj",           # Windows (Segoe UI Emoji)
+    "notocoloremoji",  # Linux
+    "seguiemj",  # Windows (Segoe UI Emoji)
 ] + _SYMBOL
 # Plain Latin text fonts
 _TEXT = ["arial", "liberationsans", "dejavusans", "freesans"]
@@ -69,22 +71,24 @@ _TEXT = ["arial", "liberationsans", "dejavusans", "freesans"]
 
 def make_fonts(L):
     return {
-        "coord":  _best_font(_TEXT,   L.fs_coord,  bold=True),
-        "status": _best_font(_TEXT,   L.fs_status, bold=True),
-        "piece":  _best_font(_SYMBOL, L.fs_piece),
-        "panel":  _best_font(_TEXT,   L.fs_panel),
-        "header": _best_font(_TEXT,   L.fs_header, bold=True),
-        "tip":    _best_font(_TEXT,   L.fs_tip),
-        "title":  _best_font(_TEXT,   L.fs_title,  bold=True),
-        "btn":    _best_font(_TEXT,   L.fs_btn,    bold=True),
-        "icon":   _best_font(_SYMBOL, L.fs_btn),
-        "sub":    _best_font(_TEXT,   L.fs_sub),
-        "over":   _best_font(_TEXT,   L.fs_over,   bold=True),
-        "bar":    _best_font(_TEXT,   L.fs_bar),
+        "coord": _best_font(_TEXT, L.fs_coord, bold=True),
+        "status": _best_font(_TEXT, L.fs_status, bold=True),
+        "piece": _best_font(_SYMBOL, L.fs_piece),
+        "panel": _best_font(_TEXT, L.fs_panel),
+        "header": _best_font(_TEXT, L.fs_header, bold=True),
+        "tip": _best_font(_TEXT, L.fs_tip),
+        "title": _best_font(_TEXT, L.fs_title, bold=True),
+        "btn": _best_font(_TEXT, L.fs_btn, bold=True),
+        "icon": _best_font(_SYMBOL, L.fs_btn),
+        "sub": _best_font(_TEXT, L.fs_sub),
+        "over": _best_font(_TEXT, L.fs_over, bold=True),
+        "bar": _best_font(_TEXT, L.fs_bar),
     }
 
 
-def _blit_icon_btn(screen, rect, icon_font, icon, icon_color, text_font, text, text_color):
+def _blit_icon_btn(
+    screen, rect, icon_font, icon, icon_color, text_font, text, text_color
+):
     """Render a colored chess-piece icon and UTF-8 text side-by-side, centered in rect."""
     icon_s = icon_font.render(icon, True, icon_color)
     text_s = text_font.render(text, True, text_color)
@@ -94,7 +98,9 @@ def _blit_icon_btn(screen, rect, icon_font, icon, icon_color, text_font, text, t
     x = rect.centerx - total_w // 2
     y = rect.centery - row_h // 2
     screen.blit(icon_s, (x, y + (row_h - icon_s.get_height()) // 2))
-    screen.blit(text_s, (x + icon_s.get_width() + gap, y + (row_h - text_s.get_height()) // 2))
+    screen.blit(
+        text_s, (x + icon_s.get_width() + gap, y + (row_h - text_s.get_height()) // 2)
+    )
 
 
 def draw_board(screen, L):
@@ -133,7 +139,9 @@ def draw_coordinates(screen, fonts, flipped, L):
             screen.blit(s, s.get_rect(center=(x, y)))
 
 
-def draw_highlights(screen, selected, moves, last_move_coords, cursor, flipped, L, preview_move=None):
+def draw_highlights(
+    screen, selected, moves, last_move_coords, cursor, flipped, L, preview_move=None
+):
     ov = pygame.Surface((L.tile, L.tile), pygame.SRCALPHA)
     if last_move_coords:
         fr, fc, tr, tc = last_move_coords
@@ -217,7 +225,12 @@ def draw_ai_progress(screen, progress, L):
     y = L.border_top - bar_h - 4
     pygame.draw.rect(screen, (60, 60, 80), (x, y, bar_w, bar_h), border_radius=bar_h)
     if ratio > 0:
-        pygame.draw.rect(screen, (100, 180, 255), (x, y, int(bar_w * ratio), bar_h), border_radius=bar_h)
+        pygame.draw.rect(
+            screen,
+            (100, 180, 255),
+            (x, y, int(bar_w * ratio), bar_h),
+            border_radius=bar_h,
+        )
 
 
 def draw_tip(screen, fonts, tip_text, L):
@@ -291,8 +304,8 @@ def draw_move_panel(screen, fonts, move_history, L):
     col_b = L.board_w + L.panel_w // 2 + 8
     y_hdr = L.border_top + 6
     screen.blit(fp.render(S.PANEL_COL_NUMBER, True, (140, 140, 140)), (col_num, y_hdr))
-    screen.blit(fp.render(S.PANEL_COL_WHITE,  True, PANEL_TEXT_W),   (col_w,   y_hdr))
-    screen.blit(fp.render(S.PANEL_COL_BLACK,  True, PANEL_TEXT_B),   (col_b,   y_hdr))
+    screen.blit(fp.render(S.PANEL_COL_WHITE, True, PANEL_TEXT_W), (col_w, y_hdr))
+    screen.blit(fp.render(S.PANEL_COL_BLACK, True, PANEL_TEXT_B), (col_b, y_hdr))
     pygame.draw.line(
         screen,
         (60, 60, 60),
@@ -344,7 +357,9 @@ def _draw_gradient(screen, w, h, top_col, bottom_col):
 
 
 def draw_menu(screen, fonts, hovered, L):
-    _draw_gradient(screen, screen.get_width(), screen.get_height(), (91, 44, 111), (247, 220, 111))
+    _draw_gradient(
+        screen, screen.get_width(), screen.get_height(), (91, 44, 111), (247, 220, 111)
+    )
     cy = L.window_h // 2
     title = fonts["title"].render(S.MENU_TITLE, True, (255, 220, 50))
     screen.blit(title, title.get_rect(center=(L.window_w // 2, cy - 180)))
@@ -352,10 +367,23 @@ def draw_menu(screen, fonts, hovered, L):
     screen.blit(sub, sub.get_rect(center=(L.window_w // 2, cy - 115)))
 
     buttons = [
-        (MODE_PVP,      S.MENU_PVP_LABEL,      S.MENU_PVP_DESC,      "♙", (255, 215,  50)),
-        (MODE_AI,       S.MENU_AI_LABEL,       S.MENU_AI_DESC,       "♟", (255,  90,  90)),
-        (MODE_LEARNING, S.MENU_LEARNING_LABEL, S.MENU_LEARNING_DESC, "♗", ( 80, 200, 255)),
-        (MODE_ML_AI,   S.MENU_ML_AI_LABEL,   S.MENU_ML_AI_DESC,   "♚", (180, 120, 255)),
+        (MODE_PVP, S.MENU_PVP_LABEL, S.MENU_PVP_DESC, "♙", (255, 215, 50)),
+        (MODE_AI, S.MENU_AI_LABEL, S.MENU_AI_DESC, "♟", (255, 90, 90)),
+        (
+            MODE_LEARNING,
+            S.MENU_LEARNING_LABEL,
+            S.MENU_LEARNING_DESC,
+            "♗",
+            (80, 200, 255),
+        ),
+        (MODE_ML_AI, S.MENU_ML_AI_LABEL, S.MENU_ML_AI_DESC, "♚", (180, 120, 255)),
+        (
+            MODE_ML_SELF,
+            S.MENU_ML_SELF_LABEL,
+            S.MENU_ML_SELF_DESC,
+            "♛",
+            (100, 220, 180),
+        ),
     ]
     bw = min(460, L.window_w - 80)
     bh = max(50, L.tile - 10)
@@ -373,7 +401,9 @@ def draw_menu(screen, fonts, hovered, L):
         icon_s = fonts["icon"].render(icon, True, icon_col)
         ls = fonts["btn"].render(label, True, (240, 240, 240))
         screen.blit(icon_s, icon_s.get_rect(midleft=(bx + 16, by + bh // 3)))
-        screen.blit(ls, ls.get_rect(midleft=(bx + 16 + icon_s.get_width() + 8, by + bh // 3)))
+        screen.blit(
+            ls, ls.get_rect(midleft=(bx + 16 + icon_s.get_width() + 8, by + bh // 3))
+        )
         ds = fonts["sub"].render(desc, True, (160, 160, 160))
         screen.blit(ds, ds.get_rect(midleft=(bx + 16, by + 2 * bh // 3)))
 
@@ -408,11 +438,11 @@ def draw_pause_menu(screen, fonts, hovered, L):
     )
 
     actions = [
-        ("resume",     S.PAUSE_RESUME,     "♙", ( 80, 220, 100)),
-        ("restart",    S.PAUSE_RESTART,    "♞", (255, 200,  50)),
-        ("menu",       S.PAUSE_MENU,       "♝", (130, 160, 255)),
-        ("fullscreen", S.PAUSE_FULLSCREEN, "♜", ( 80, 210, 210)),
-        ("quit",       S.PAUSE_QUIT,       "♛", (255,  90,  90)),
+        ("resume", S.PAUSE_RESUME, "♙", (80, 220, 100)),
+        ("restart", S.PAUSE_RESTART, "♞", (255, 200, 50)),
+        ("menu", S.PAUSE_MENU, "♝", (130, 160, 255)),
+        ("fullscreen", S.PAUSE_FULLSCREEN, "♜", (80, 210, 210)),
+        ("quit", S.PAUSE_QUIT, "♛", (255, 90, 90)),
     ]
     rects = {}
     total_h = len(actions) * gap - (gap - bh)
@@ -426,8 +456,16 @@ def draw_pause_menu(screen, fonts, hovered, L):
         border = (255, 220, 50) if hovered == key else (70, 70, 95)
         pygame.draw.rect(screen, col, rect, border_radius=10)
         pygame.draw.rect(screen, border, rect, 2, border_radius=10)
-        _blit_icon_btn(screen, rect, fonts["icon"], icon, icon_col,
-                       fonts["btn"], label, (230, 230, 230))
+        _blit_icon_btn(
+            screen,
+            rect,
+            fonts["icon"],
+            icon,
+            icon_col,
+            fonts["btn"],
+            label,
+            (230, 230, 230),
+        )
 
     esc_hint = fonts["sub"].render(S.PAUSE_ESC_HINT, True, (90, 90, 90))
     screen.blit(
@@ -436,37 +474,208 @@ def draw_pause_menu(screen, fonts, hovered, L):
     return rects
 
 
-def draw_gameover_overlay(screen, fonts, message, over_hovered, L):
+def draw_self_play_speed(screen, fonts, delay_ms, L):
+    """
+    Draw a small speed-indicator in the top-right corner of the board area
+    (just below the mode badge) during ML self-play.
+    """
+    if delay_ms > 0:
+        label = S.ML_SELF_DELAY.format(ms=delay_ms)
+    else:
+        label = S.ML_SELF_DELAY.format(ms=0)
+    hint = S.ML_SELF_SPEED_HINT
+    delay_surf = fonts["sub"].render(label, True, (100, 200, 170))
+    hint_surf = fonts["sub"].render(hint, True, (80, 80, 80))
+    x = L.board_w - max(delay_surf.get_width(), hint_surf.get_width()) - 8
+    screen.blit(delay_surf, (x, 6 + fonts["sub"].get_height() + 4))
+    screen.blit(hint_surf, (x, 6 + fonts["sub"].get_height() * 2 + 6))
+
+
+def draw_gameover_overlay(
+    screen,
+    fonts,
+    message,
+    over_hovered,
+    L,
+    ml_stats=None,
+    training_progress=None,
+    training_done=False,
+    self_play=False,
+):
+    """
+    Draw the game-over overlay.
+
+    When ml_stats is provided (ML AI / ML self-play) the overlay is extended
+    with a stats block and a live-filling training progress bar.
+
+    ml_stats keys: elo, wins, draws, losses, games, game_length, last_value
+    training_progress: [steps_done, total_steps]  (shared list, updated by thread)
+    training_done: True once the training thread has finished
+    self_play: when True, hides the human W/D/L record (not meaningful for
+               self-play) and labels the ELO row accordingly
+    """
     ov = pygame.Surface((L.window_w, L.window_h), pygame.SRCALPHA)
     ov.fill((0, 0, 0, 175))
     screen.blit(ov, (0, 0))
-    ms = fonts["over"].render(message, True, (255, 220, 50))
-    screen.blit(ms, ms.get_rect(center=(L.window_w // 2, L.window_h // 2 - 90)))
 
-    actions = [
-        ("restart", S.OVER_PLAY_AGAIN, "♞", ( 80, 220, 100)),
-        ("menu",    S.OVER_MENU,       "♝", (130, 160, 255)),
-        ("quit",    S.OVER_QUIT,       "♛", (255,  90,  90)),
-    ]
-    bw = min(280, L.window_w - 80)
+    cx = L.window_w // 2
+    bw = min(320, L.window_w - 80)
     bh = max(40, L.tile - 20)
     gap = bh + 12
-    cx = L.window_w // 2
-    cy = L.window_h // 2
+
+    actions = [
+        ("restart", S.OVER_PLAY_AGAIN, "♞", (80, 220, 100)),
+        ("menu", S.OVER_MENU, "♝", (130, 160, 255)),
+        ("quit", S.OVER_QUIT, "♛", (255, 90, 90)),
+    ]
+    btn_total_h = len(actions) * gap - (gap - bh)
     rects = {}
-    total_h = len(actions) * gap - (gap - bh)
-    start_y = cy - total_h // 2
-    for i, (key, label, icon, icon_col) in enumerate(actions):
+
+    if ml_stats is not None:
+        # ── Extended ML-AI overlay ──────────────────────────────────────────
+        sec = max(8, L.tile // 10)  # gap between sections
+        msg_fh = fonts["over"].get_height()
+        stat_fh = fonts["status"].get_height()
+        sub_fh = fonts["sub"].get_height()
+        bar_h = max(12, L.tile // 6)
+
+        total_h = (
+            msg_fh
+            + sec
+            + stat_fh
+            + 3
+            + stat_fh
+            + sec  # two stat rows
+            + sub_fh
+            + 4
+            + bar_h
+            + sec  # training label + bar
+            + btn_total_h
+        )
+
+        y = max(8, L.window_h // 2 - total_h // 2)
+
+        # Result message
+        ms = fonts["over"].render(message, True, (255, 220, 50))
+        screen.blit(ms, ms.get_rect(centerx=cx, top=y))
+        y += msg_fh + sec
+
+        # ── Stats rows ──────────────────────────────────────────────────────
+        elo = ml_stats.get("elo", 800)
+        wins = ml_stats.get("wins", 0)
+        draws = ml_stats.get("draws", 0)
+        losses = ml_stats.get("losses", 0)
+        games = ml_stats.get("games", 0)
+        gl = ml_stats.get("game_length", 0)
+        val = ml_stats.get("last_value", 0.0)
+
+        stat_col = (190, 190, 205)
+        sep = "   ·   "
+
+        if self_play:
+            # Self-play: no human W/D/L record — just ELO and game length
+            row1 = (
+                S.ML_OVER_ELO.format(elo=elo)
+                + sep
+                + S.ML_OVER_GAME_LENGTH.format(moves=gl)
+            )
+            row2 = S.ML_OVER_CONFIDENCE.format(val=val)
+        else:
+            row1 = (
+                S.ML_OVER_ELO.format(elo=elo)
+                + sep
+                + S.ML_OVER_RECORD.format(wins=wins, draws=draws, losses=losses)
+                + sep
+                + S.ML_OVER_GAMES.format(games=games)
+            )
+            row2 = (
+                S.ML_OVER_GAME_LENGTH.format(moves=gl)
+                + sep
+                + S.ML_OVER_CONFIDENCE.format(val=val)
+            )
+
+        for row_text in (row1, row2):
+            s = fonts["status"].render(row_text, True, stat_col)
+            screen.blit(s, s.get_rect(centerx=cx, top=y))
+            y += stat_fh + 3
+        y += sec
+
+        # ── Training label + progress bar ───────────────────────────────────
+        done = training_done or (
+            training_progress is not None
+            and training_progress[1] > 0
+            and training_progress[0] >= training_progress[1]
+        )
+        label = S.ML_OVER_TRAINING_DONE if done else S.ML_OVER_TRAINING
+        label_col = (100, 220, 120) if done else (100, 170, 255)
+        ls = fonts["sub"].render(label, True, label_col)
+        screen.blit(ls, ls.get_rect(centerx=cx, top=y))
+        y += sub_fh + 4
+
+        if training_progress is not None and training_progress[1] > 0:
+            frac = min(1.0, training_progress[0] / training_progress[1])
+        else:
+            frac = 1.0 if done else 0.0
+
         bx = cx - bw // 2
-        by = start_y + i * gap
-        rect = pygame.Rect(bx, by, bw, bh)
-        rects[key] = rect
-        col = (80, 80, 110) if over_hovered == key else (45, 45, 65)
-        border = (255, 220, 50) if over_hovered == key else (70, 70, 95)
-        pygame.draw.rect(screen, col, rect, border_radius=10)
-        pygame.draw.rect(screen, border, rect, 2, border_radius=10)
-        _blit_icon_btn(screen, rect, fonts["icon"], icon, icon_col,
-                       fonts["btn"], label, (230, 230, 230))
+        bar_rect = pygame.Rect(bx, y, bw, bar_h)
+        pygame.draw.rect(screen, (45, 45, 65), bar_rect, border_radius=4)
+        if frac > 0:
+            fill_w = max(bar_h, int(bw * frac))  # keep ends rounded nicely
+            fill = pygame.Rect(bx, y, fill_w, bar_h)
+            bar_color = (70, 210, 90) if done else (70, 130, 255)
+            pygame.draw.rect(screen, bar_color, fill, border_radius=4)
+        pygame.draw.rect(screen, (85, 85, 110), bar_rect, 1, border_radius=4)
+        y += bar_h + sec
+
+        # ── Buttons ─────────────────────────────────────────────────────────
+        for i, (key, label, icon, icon_col) in enumerate(actions):
+            bx2 = cx - bw // 2
+            by = y + i * gap
+            rect = pygame.Rect(bx2, by, bw, bh)
+            rects[key] = rect
+            col = (80, 80, 110) if over_hovered == key else (45, 45, 65)
+            border = (255, 220, 50) if over_hovered == key else (70, 70, 95)
+            pygame.draw.rect(screen, col, rect, border_radius=10)
+            pygame.draw.rect(screen, border, rect, 2, border_radius=10)
+            _blit_icon_btn(
+                screen,
+                rect,
+                fonts["icon"],
+                icon,
+                icon_col,
+                fonts["btn"],
+                label,
+                (230, 230, 230),
+            )
+
+    else:
+        # ── Original simple overlay ─────────────────────────────────────────
+        ms = fonts["over"].render(message, True, (255, 220, 50))
+        screen.blit(ms, ms.get_rect(center=(cx, L.window_h // 2 - 90)))
+
+        total_h = btn_total_h
+        start_y = L.window_h // 2 - total_h // 2
+        for i, (key, label, icon, icon_col) in enumerate(actions):
+            bx = cx - bw // 2
+            by = start_y + i * gap
+            rect = pygame.Rect(bx, by, bw, bh)
+            rects[key] = rect
+            col = (80, 80, 110) if over_hovered == key else (45, 45, 65)
+            border = (255, 220, 50) if over_hovered == key else (70, 70, 95)
+            pygame.draw.rect(screen, col, rect, border_radius=10)
+            pygame.draw.rect(screen, border, rect, 2, border_radius=10)
+            _blit_icon_btn(
+                screen,
+                rect,
+                fonts["icon"],
+                icon,
+                icon_col,
+                fonts["btn"],
+                label,
+                (230, 230, 230),
+            )
+
     return rects
 
 
@@ -498,8 +707,17 @@ def draw_lang_picker(screen, fonts, flags, locales, current, open_, hovered, L):
     pygame.draw.rect(screen, bg, toggle_rect, border_radius=6)
     pygame.draw.rect(screen, (120, 120, 160), toggle_rect, 1, border_radius=6)
     current_name = next((name for code, name, _ in locales if code == current), current)
-    _draw_flag_item(screen, fonts, flags, current, current_name,
-                    toggle_rect.x, toggle_rect.y, drop_w, item_h)
+    _draw_flag_item(
+        screen,
+        fonts,
+        flags,
+        current,
+        current_name,
+        toggle_rect.x,
+        toggle_rect.y,
+        drop_w,
+        item_h,
+    )
 
     if not open_:
         return rects
@@ -513,8 +731,7 @@ def draw_lang_picker(screen, fonts, flags, locales, current, open_, hovered, L):
         pygame.draw.rect(screen, item_bg, item_rect, border_radius=4)
         border_col = (255, 220, 50) if code == current else (70, 70, 100)
         pygame.draw.rect(screen, border_col, item_rect, 1, border_radius=4)
-        _draw_flag_item(screen, fonts, flags, code, name,
-                        tx, dy, drop_w, item_h)
+        _draw_flag_item(screen, fonts, flags, code, name, tx, dy, drop_w, item_h)
         dy += item_h + 2
 
     return rects
@@ -522,9 +739,13 @@ def draw_lang_picker(screen, fonts, flags, locales, current, open_, hovered, L):
 
 def draw_lang_select(screen, fonts, flags, locales, hovered, L):
     """Full-screen language list shown on first launch (no prefs.dat)."""
-    _draw_gradient(screen, screen.get_width(), screen.get_height(), (91, 44, 111), (247, 220, 111))
+    _draw_gradient(
+        screen, screen.get_width(), screen.get_height(), (91, 44, 111), (247, 220, 111)
+    )
 
-    default_title = next((t for code, _, t in locales if code == "en"), "Select Language")
+    default_title = next(
+        (t for code, _, t in locales if code == "en"), "Select Language"
+    )
     title_text = next((t for code, _, t in locales if code == hovered), default_title)
     title = fonts["title"].render(title_text, True, (255, 220, 50))
     screen.blit(title, title.get_rect(center=(screen.get_width() // 2, 70)))
@@ -557,8 +778,6 @@ def _draw_flag_item(screen, fonts, flags, code, label, x, y, w, h):
         screen.blit(flags[code], (x + _PAD, y + (h - FLAG_H) // 2))
     else:
         code_s = fonts["sub"].render(code.upper(), True, (220, 220, 220))
-        screen.blit(code_s, code_s.get_rect(
-            midleft=(x + _PAD, y + h // 2)))
+        screen.blit(code_s, code_s.get_rect(midleft=(x + _PAD, y + h // 2)))
     name_s = fonts["sub"].render(label, True, (220, 220, 220))
-    screen.blit(name_s, name_s.get_rect(
-        midleft=(x + _PAD + FLAG_W + 8, y + h // 2)))
+    screen.blit(name_s, name_s.get_rect(midleft=(x + _PAD + FLAG_W + 8, y + h // 2)))

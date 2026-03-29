@@ -51,10 +51,24 @@
   "status_your_turn": "Tu turno",
   "status_ai_turn": "Turno de la IA",
 
-  "tip_pawn":   "Los peones avanzan 1 casilla (2 desde el inicio) y capturan en diagonal.",
+  "ml_over_training": "Entrenando…",
+  "ml_over_training_done": "Entrenamiento completo",
+  "ml_over_elo": "ELO: {elo}",
+  "ml_over_record": "{wins}V  {draws}E  {losses}D",
+  "ml_over_games": "Partidas: {games}",
+  "ml_over_game_length": "Movs.: {moves}",
+  "ml_over_confidence": "Última eval.: {val:+.2f}",
+
+  "menu_ml_self_label": "ML vs ML",
+  "menu_ml_self_desc": "Observa al modelo jugar contra sí mismo",
+  "badge_ml_self": "ML vs ML",
+  "ml_self_delay": "Retraso: {ms}ms",
+  "ml_self_speed_hint": "+/- cambiar velocidad",
+
+  "tip_pawn": "Los peones avanzan 1 casilla (2 desde el inicio) y capturan en diagonal.",
   "tip_knight": "Los caballos se mueven en forma de L y pueden saltar sobre piezas.",
   "tip_bishop": "Los alfiles se deslizan en diagonal cualquier número de casillas.",
-  "tip_rook":   "Las torres se deslizan horizontal o verticalmente cualquier número de casillas.",
-  "tip_queen":  "La reina combina torre y alfil – la pieza más poderosa.",
-  "tip_king":   "El rey se mueve 1 casilla en cualquier dirección. ¡Protege el tuyo!"
+  "tip_rook": "Las torres se deslizan horizontal o verticalmente cualquier número de casillas.",
+  "tip_queen": "La reina combina torre y alfil – la pieza más poderosa.",
+  "tip_king": "El rey se mueve 1 casilla en cualquier dirección. ¡Protege el tuyo!"
 }
