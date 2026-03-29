@@ -17,12 +17,13 @@ import pygame
 
 from .constants import (
     ASSET_DIR,
+    MODE_LANG_SELECT,
     MODE_MENU,
     MODE_AI,
     MODE_LEARNING,
 )
 from . import strings
-from .strings import S, reload as reload_strings, available_locales
+from .strings import S, reload as reload_strings, available_locales, prefs_exist
 from .ui.layout import Layout
 from .engine.pieces import load_pieces, reload_pieces, load_flags
 from .engine.board import (
@@ -52,6 +53,7 @@ from .ui.rendering import (
     draw_pause_menu,
     draw_gameover_overlay,
     draw_lang_picker,
+    draw_lang_select,
     draw_ai_progress,
     PIECE_SYMBOLS,
 )
@@ -83,7 +85,9 @@ def main():
     resize_timer = 0  # ticks when we will apply it
     RESIZE_DELAY = 100  # ms quiet period before re-layout
 
-    mode = MODE_MENU
+    mode = MODE_MENU if prefs_exist() else MODE_LANG_SELECT
+    lang_select_hovered = None
+    lang_select_rects = {}
     menu_hovered = None
     menu_rects = {}
     paused = False
@@ -228,6 +232,23 @@ def main():
             # ── F11 always works ──────────────────────────────────────────
             if event.type == pygame.KEYDOWN and event.key == pygame.K_F11:
                 toggle_fullscreen()
+                continue
+
+            # ── Language selection (first launch) ─────────────────────────
+            if mode == MODE_LANG_SELECT:
+                if event.type == pygame.MOUSEMOTION:
+                    lang_select_hovered = None
+                    for k, rect in lang_select_rects.items():
+                        if rect.collidepoint(mx, my):
+                            lang_select_hovered = k
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    for k, rect in lang_select_rects.items():
+                        if rect.collidepoint(mx, my):
+                            reload_strings(k)
+                            pygame.display.set_caption(S.WINDOW_TITLE)
+                            mode = MODE_MENU
+                            lang_select_hovered = None
+                            break
                 continue
 
             # ── Menu ──────────────────────────────────────────────────────
@@ -497,7 +518,11 @@ def main():
                         do_move(selected, cell)
 
         # ── Render ────────────────────────────────────────────────────────
-        if mode == MODE_MENU:
+        if mode == MODE_LANG_SELECT:
+            lang_select_rects = draw_lang_select(
+                screen, fonts, flags, locales, lang_select_hovered, L
+            )
+        elif mode == MODE_MENU:
             menu_rects = draw_menu(screen, fonts, menu_hovered, L)
             lang_rects = draw_lang_picker(
                 screen, fonts, flags, locales,

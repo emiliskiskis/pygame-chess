@@ -22,6 +22,7 @@ PANEL_HEADER = (60, 60, 60)
 PANEL_TEXT_W = (240, 240, 240)
 PANEL_TEXT_B = (180, 180, 180)
 
+MODE_LANG_SELECT = "lang_select"
 MODE_MENU = "menu"
 MODE_PVP = "pvp"
 MODE_AI = "ai"

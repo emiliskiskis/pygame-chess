@@ -29,13 +29,22 @@ def _load_locale():
         return "en"
 
 
+def prefs_exist():
+    """Return True if a saved locale preference file exists."""
+    return _PREFS_FILE.exists()
+
+
 def available_locales():
-    """Return [(code, language_name)] for every locale that has a JSON file."""
+    """Return [(code, language_name, lang_select_title)] for every locale that has a JSON file."""
     result = []
     for path in sorted(_LOCALE_DIR.glob("*.json")):
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
-            result.append((path.stem, data.get("_language", path.stem)))
+            result.append((
+                path.stem,
+                data.get("_language", path.stem),
+                data.get("_lang_select_title", "Select Language"),
+            ))
         except Exception:
             pass
     return result
@@ -100,7 +109,7 @@ class S:
     TIPS: dict = {}
 
 
-def reload(locale="en"):
+def reload(locale="en", save=True):
     """Load locale/<locale>.json into S. Falls back to en if missing."""
     global CURRENT_LOCALE
     path = _LOCALE_DIR / f"{locale}.json"
@@ -109,7 +118,8 @@ def reload(locale="en"):
         locale = "en"
     d = json.loads(path.read_text(encoding="utf-8"))
     CURRENT_LOCALE = locale
-    _save_locale(locale)
+    if save:
+        _save_locale(locale)
 
     S.WINDOW_TITLE = d["window_title"]
     S.MENU_TITLE = d["menu_title"]
@@ -157,5 +167,5 @@ def reload(locale="en"):
     }
 
 
-# Load default on import
-reload(_load_locale())
+# Load default on import — don't create prefs.dat if it doesn't exist yet
+reload(_load_locale(), save=_PREFS_FILE.exists())

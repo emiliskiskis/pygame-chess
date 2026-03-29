@@ -33,7 +33,7 @@ def load_flags(asset_dir, locales):
     flags_dir = os.path.join(asset_dir, "flags")
     if not os.path.isdir(flags_dir):
         return flags
-    for code, _ in locales:
+    for code, *_ in locales:
         path = os.path.join(flags_dir, f"{code}.svg")
         if os.path.isfile(path):
             try:

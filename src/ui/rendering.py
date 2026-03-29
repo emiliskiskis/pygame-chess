@@ -483,7 +483,7 @@ def draw_lang_picker(screen, fonts, flags, locales, current, open_, hovered, L):
     item_h = FLAG_H + _PAD * 2
 
     # Max language-name width (for dropdown sizing)
-    name_w = max((fonts["sub"].size(name)[0] for _, name in locales), default=60)
+    name_w = max((fonts["sub"].size(name)[0] for _, name, _ in locales), default=60)
     drop_w = _PAD + FLAG_W + 8 + name_w + _PAD
 
     # Toggle button: top-right, aligned with dropdown
@@ -495,7 +495,7 @@ def draw_lang_picker(screen, fonts, flags, locales, current, open_, hovered, L):
     bg = (80, 80, 110) if hovered == "toggle" else (50, 50, 75)
     pygame.draw.rect(screen, bg, toggle_rect, border_radius=6)
     pygame.draw.rect(screen, (120, 120, 160), toggle_rect, 1, border_radius=6)
-    current_name = next((name for code, name in locales if code == current), current)
+    current_name = next((name for code, name, _ in locales if code == current), current)
     _draw_flag_item(screen, fonts, flags, current, current_name,
                     toggle_rect.x, toggle_rect.y, drop_w, item_h)
 
@@ -504,7 +504,7 @@ def draw_lang_picker(screen, fonts, flags, locales, current, open_, hovered, L):
 
     # Dropdown list below the toggle
     dy = ty + item_h + 4
-    for code, name in locales:
+    for code, name, _ in locales:
         item_rect = pygame.Rect(tx, dy, drop_w, item_h)
         rects[code] = item_rect
         item_bg = (80, 80, 110) if hovered == code else (40, 40, 60)
@@ -514,6 +514,37 @@ def draw_lang_picker(screen, fonts, flags, locales, current, open_, hovered, L):
         _draw_flag_item(screen, fonts, flags, code, name,
                         tx, dy, drop_w, item_h)
         dy += item_h + 2
+
+    return rects
+
+
+def draw_lang_select(screen, fonts, flags, locales, hovered, L):
+    """Full-screen language list shown on first launch (no prefs.dat)."""
+    _draw_gradient(screen, screen.get_width(), screen.get_height(), (91, 44, 111), (247, 220, 111))
+
+    default_title = next((t for code, _, t in locales if code == "en"), "Select Language")
+    title_text = next((t for code, _, t in locales if code == hovered), default_title)
+    title = fonts["title"].render(title_text, True, (255, 220, 50))
+    screen.blit(title, title.get_rect(center=(screen.get_width() // 2, 70)))
+
+    bw = min(420, screen.get_width() - 80)
+    item_h = max(50, FLAG_H + 20)
+    gap = item_h + 10
+    total_h = len(locales) * gap - 10
+    start_y = max(130, screen.get_height() // 2 - total_h // 2)
+
+    cx = screen.get_width() // 2
+    rects = {}
+    for i, (code, name, _) in enumerate(locales):
+        bx = cx - bw // 2
+        by = start_y + i * gap
+        rect = pygame.Rect(bx, by, bw, item_h)
+        rects[code] = rect
+        col = (70, 70, 90) if hovered == code else (45, 45, 60)
+        border = (255, 220, 50) if hovered == code else (80, 80, 100)
+        pygame.draw.rect(screen, col, rect, border_radius=10)
+        pygame.draw.rect(screen, border, rect, 2, border_radius=10)
+        _draw_flag_item(screen, fonts, flags, code, name, bx, by, bw, item_h)
 
     return rects
 
