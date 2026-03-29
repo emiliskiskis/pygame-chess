@@ -46,6 +46,13 @@ from .engine.ml_ai import (
 )
 from .engine.notation import parse_algebraic
 from .engine.pieces import load_flags, load_pieces, reload_pieces
+from .savegame import (
+    SAVEABLE_MODES,
+    delete_save,
+    load_game,
+    save_exists,
+    save_game,
+)
 from .strings import S, available_locales, prefs_exist
 from .strings import reload as reload_strings
 from .ui.layout import Layout
@@ -53,7 +60,9 @@ from .ui.rendering import (
     PIECE_SYMBOLS,
     draw_ai_progress,
     draw_board,
+    draw_continue_popup,
     draw_coordinates,
+    draw_corrupt_popup,
     draw_fallback_pieces,
     draw_gameover_overlay,
     draw_highlights,
@@ -130,6 +139,12 @@ def main():
     # ML self-play state
     self_play_delay_ms = 500  # ms pause between moves; 0 = as fast as threads allow
     last_move_time = 0  # pygame ticks when the last self-play move finished
+
+    # Save-game popup state
+    save_popup_pending_mode = None  # mode key waiting for user's yes/no/cancel
+    save_popup_error = False  # True when save file was found but is corrupt
+    save_popup_hovered = None  # which popup button is currently hovered
+    save_popup_rects = {}  # hit-test rects for the active popup
 
     def new_game(new_mode):
         nonlocal board, turn, selected, possible_moves, last_move
@@ -238,6 +253,19 @@ def main():
         if mode == MODE_ML_SELF:
             last_move_time = pygame.time.get_ticks()
 
+    def _save_current_game():
+        """Persist the in-progress game state, if applicable."""
+        if mode in SAVEABLE_MODES and board is not None and not game_over:
+            save_game(
+                mode,
+                board,
+                turn,
+                last_move,
+                castling_rights,
+                move_history or [],
+                flipped or False,
+            )
+
     # ── Main loop ──────────────────────────────────────────────────────────
     while True:
         now = pygame.time.get_ticks()
@@ -332,6 +360,7 @@ def main():
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
+                _save_current_game()
                 pygame.quit()
                 sys.exit()
 
@@ -367,6 +396,62 @@ def main():
 
             # ── Menu ──────────────────────────────────────────────────────
             if mode == MODE_MENU:
+                # ── Save-game popup (overlays menu while visible) ─────────
+                if save_popup_error or save_popup_pending_mode is not None:
+                    if event.type == pygame.MOUSEMOTION:
+                        save_popup_hovered = None
+                        for k, rect in save_popup_rects.items():
+                            if rect.collidepoint(mx, my):
+                                save_popup_hovered = k
+                    if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                        for k, rect in save_popup_rects.items():
+                            if rect.collidepoint(mx, my):
+                                if save_popup_error:
+                                    # Corrupt/unreadable save — wipe it and start fresh
+                                    if k == "continue":
+                                        delete_save(save_popup_pending_mode)
+                                        mode = save_popup_pending_mode
+                                        new_game(save_popup_pending_mode)
+                                        save_popup_pending_mode = None
+                                        save_popup_error = False
+                                        save_popup_hovered = None
+                                else:
+                                    if k == "yes":
+                                        try:
+                                            data = load_game(save_popup_pending_mode)
+                                            new_game(save_popup_pending_mode)
+                                            mode = save_popup_pending_mode
+                                            # Override new_game defaults with saved state
+                                            board = data["board"]
+                                            turn = data["turn"]
+                                            last_move = data["last_move"]
+                                            castling_rights = data["castling_rights"]
+                                            move_history = data["move_history"]
+                                            flipped = data.get("flipped", False)
+                                            status_msg, game_over = post_move_status(
+                                                board,
+                                                turn,
+                                                last_move,
+                                                castling_rights,
+                                                mode,
+                                            )
+                                            save_popup_pending_mode = None
+                                            save_popup_hovered = None
+                                        except ValueError:
+                                            save_popup_error = True
+                                            save_popup_hovered = None
+                                    elif k == "no":
+                                        delete_save(save_popup_pending_mode)
+                                        mode = save_popup_pending_mode
+                                        new_game(save_popup_pending_mode)
+                                        save_popup_pending_mode = None
+                                        save_popup_hovered = None
+                                    elif k == "cancel":
+                                        save_popup_pending_mode = None
+                                        save_popup_error = False
+                                        save_popup_hovered = None
+                                break
+                    continue
                 if event.type == pygame.MOUSEMOTION:
                     menu_hovered = None
                     lang_hovered = None
@@ -397,8 +482,14 @@ def main():
                         lang_open = False
                         for m, rect in menu_rects.items():
                             if rect.collidepoint(mx, my):
-                                mode = m
-                                new_game(m)
+                                if m in SAVEABLE_MODES and save_exists(m):
+                                    # Show continue/new-game popup
+                                    save_popup_pending_mode = m
+                                    save_popup_hovered = None
+                                    save_popup_rects = {}
+                                else:
+                                    mode = m
+                                    new_game(m)
                                 break
                 continue
 
@@ -437,10 +528,12 @@ def main():
                                 elif k == "restart":
                                     new_game(mode)
                                 elif k == "menu":
+                                    _save_current_game()
                                     mode = MODE_MENU
                                 elif k == "fullscreen":
                                     toggle_fullscreen()
                                 elif k == "quit":
+                                    _save_current_game()
                                     pygame.quit()
                                     sys.exit()
                                 break
@@ -669,6 +762,14 @@ def main():
                 lang_hovered,
                 L,
             )
+            if save_popup_error:
+                save_popup_rects = draw_corrupt_popup(
+                    screen, fonts, save_popup_hovered, L
+                )
+            elif save_popup_pending_mode is not None:
+                save_popup_rects = draw_continue_popup(
+                    screen, fonts, save_popup_hovered, L
+                )
         else:
             draw_board(screen, L)
             if board:

@@ -113,6 +113,15 @@ class S:
     # Piece tips
     TIPS: dict = {}
 
+    # Save / continue popup
+    SAVE_CONTINUE_TITLE = ""
+    SAVE_YES = ""
+    SAVE_NO = ""
+    SAVE_CANCEL = ""
+    SAVE_CORRUPT_TITLE = ""
+    SAVE_CORRUPT_MSG = ""
+    SAVE_CORRUPT_CONTINUE = ""
+
     # ML vs ML self-play
     MENU_ML_SELF_LABEL = ""
     MENU_ML_SELF_DESC = ""
@@ -205,6 +214,15 @@ def reload(locale="en", save=True):
         "queen": d["tip_queen"],
         "king": d["tip_king"],
     }
+    S.SAVE_CONTINUE_TITLE = d.get("save_continue_title", "Continue your saved game?")
+    S.SAVE_YES = d.get("save_yes", "Yes, continue")
+    S.SAVE_NO = d.get("save_no", "No, start fresh")
+    S.SAVE_CANCEL = d.get("save_cancel", "Cancel")
+    S.SAVE_CORRUPT_TITLE = d.get("save_corrupt_title", "Save Error")
+    S.SAVE_CORRUPT_MSG = d.get(
+        "save_corrupt_msg", "The saved game could not be loaded."
+    )
+    S.SAVE_CORRUPT_CONTINUE = d.get("save_corrupt_continue", "Continue")
 
 
 # Load default on import — don't create prefs.dat if it doesn't exist yet

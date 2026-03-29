@@ -70,5 +70,13 @@
   "tip_bishop": "Bishops slide diagonally any number of squares.",
   "tip_rook": "Rooks slide horizontally or vertically any number of squares.",
   "tip_queen": "Queens combine rook and bishop - the most powerful piece.",
-  "tip_king": "Kings move 1 square in any direction. Protect yours!"
+  "tip_king": "Kings move 1 square in any direction. Protect yours!",
+
+  "save_continue_title": "Continue your saved game?",
+  "save_yes": "Yes, continue",
+  "save_no": "No, start fresh",
+  "save_cancel": "Cancel",
+  "save_corrupt_title": "Save Error",
+  "save_corrupt_msg": "The saved game could not be loaded.",
+  "save_corrupt_continue": "Continue"
 }

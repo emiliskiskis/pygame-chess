@@ -70,5 +70,13 @@
   "ml_over_record": "{wins}S  {draws}U  {losses}N",
   "ml_over_games": "Spiele: {games}",
   "ml_over_game_length": "Züge: {moves}",
-  "ml_over_confidence": "Letzte Bewertung: {val:+.2f}"
+  "ml_over_confidence": "Letzte Bewertung: {val:+.2f}",
+
+  "save_continue_title": "Gespeicherte Partie fortsetzen?",
+  "save_yes": "Ja, fortsetzen",
+  "save_no": "Nein, neu starten",
+  "save_cancel": "Abbrechen",
+  "save_corrupt_title": "Speicherfehler",
+  "save_corrupt_msg": "Der Spielstand konnte nicht geladen werden.",
+  "save_corrupt_continue": "Weiter"
 }

@@ -70,5 +70,13 @@
   "tip_bishop": "Los alfiles se deslizan en diagonal cualquier número de casillas.",
   "tip_rook": "Las torres se deslizan horizontal o verticalmente cualquier número de casillas.",
   "tip_queen": "La reina combina torre y alfil – la pieza más poderosa.",
-  "tip_king": "El rey se mueve 1 casilla en cualquier dirección. ¡Protege el tuyo!"
+  "tip_king": "El rey se mueve 1 casilla en cualquier dirección. ¡Protege el tuyo!",
+
+  "save_continue_title": "¿Continuar partida guardada?",
+  "save_yes": "Sí, continuar",
+  "save_no": "No, empezar de nuevo",
+  "save_cancel": "Cancelar",
+  "save_corrupt_title": "Error al cargar",
+  "save_corrupt_msg": "No se pudo cargar la partida guardada.",
+  "save_corrupt_continue": "Continuar"
 }

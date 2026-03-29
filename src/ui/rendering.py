@@ -781,3 +781,108 @@ def _draw_flag_item(screen, fonts, flags, code, label, x, y, w, h):
         screen.blit(code_s, code_s.get_rect(midleft=(x + _PAD, y + h // 2)))
     name_s = fonts["sub"].render(label, True, (220, 220, 220))
     screen.blit(name_s, name_s.get_rect(midleft=(x + _PAD + FLAG_W + 8, y + h // 2)))
+
+
+def draw_continue_popup(screen, fonts, hovered, L):
+    """Modal 'Continue your saved game?' popup drawn on top of the main menu."""
+    # Full-screen dim
+    ov = pygame.Surface((L.window_w, L.window_h), pygame.SRCALPHA)
+    ov.fill((0, 0, 0, 210))
+    screen.blit(ov, (0, 0))
+
+    bw = min(360, L.window_w - 80)
+    bh = max(44, L.tile - 16)
+    gap = bh + 14
+    cx = L.window_w // 2
+    cy = L.window_h // 2
+
+    # Panel background
+    panel_pad_x = 40
+    panel_pad_top = 60
+    panel_pad_bottom = 24
+    num_buttons = 3
+    panel_w = bw + panel_pad_x * 2
+    panel_h = panel_pad_top + num_buttons * gap - (gap - bh) + panel_pad_bottom
+    panel_rect = pygame.Rect(cx - panel_w // 2, cy - panel_h // 2, panel_w, panel_h)
+    pygame.draw.rect(screen, (30, 30, 48), panel_rect, border_radius=16)
+    pygame.draw.rect(screen, (80, 80, 130), panel_rect, 2, border_radius=16)
+
+    # Title
+    title = fonts["over"].render(S.SAVE_CONTINUE_TITLE, True, (255, 220, 50))
+    screen.blit(title, title.get_rect(center=(cx, panel_rect.top + 34)))
+
+    # Buttons: Yes (green), No (red), Cancel (blue)
+    actions = [
+        ("yes", S.SAVE_YES, "♙", (80, 220, 100)),
+        ("no", S.SAVE_NO, "♞", (255, 100, 100)),
+        ("cancel", S.SAVE_CANCEL, "♝", (130, 160, 255)),
+    ]
+    rects = {}
+    total_h = num_buttons * gap - (gap - bh)
+    start_y = panel_rect.top + panel_pad_top
+    for i, (key, label, icon, icon_col) in enumerate(actions):
+        bx = cx - bw // 2
+        by = start_y + i * gap
+        rect = pygame.Rect(bx, by, bw, bh)
+        rects[key] = rect
+        col = (80, 80, 110) if hovered == key else (45, 45, 65)
+        border = (255, 220, 50) if hovered == key else (70, 70, 95)
+        pygame.draw.rect(screen, col, rect, border_radius=10)
+        pygame.draw.rect(screen, border, rect, 2, border_radius=10)
+        _blit_icon_btn(
+            screen,
+            rect,
+            fonts["icon"],
+            icon,
+            icon_col,
+            fonts["btn"],
+            label,
+            (230, 230, 230),
+        )
+    return rects
+
+
+def draw_corrupt_popup(screen, fonts, hovered, L):
+    """Modal error popup shown when a save file cannot be loaded."""
+    # Full-screen dim
+    ov = pygame.Surface((L.window_w, L.window_h), pygame.SRCALPHA)
+    ov.fill((0, 0, 0, 210))
+    screen.blit(ov, (0, 0))
+
+    bw = min(360, L.window_w - 80)
+    bh = max(44, L.tile - 16)
+    cx = L.window_w // 2
+    cy = L.window_h // 2
+
+    panel_w = bw + 80
+    panel_h = bh + 130
+    panel_rect = pygame.Rect(cx - panel_w // 2, cy - panel_h // 2, panel_w, panel_h)
+    pygame.draw.rect(screen, (48, 20, 20), panel_rect, border_radius=16)
+    pygame.draw.rect(screen, (180, 60, 60), panel_rect, 2, border_radius=16)
+
+    # Error title
+    title = fonts["over"].render(S.SAVE_CORRUPT_TITLE, True, (255, 90, 90))
+    screen.blit(title, title.get_rect(center=(cx, panel_rect.top + 36)))
+
+    # Error message
+    msg = fonts["sub"].render(S.SAVE_CORRUPT_MSG, True, (210, 180, 180))
+    screen.blit(msg, msg.get_rect(center=(cx, panel_rect.top + 76)))
+
+    # Single "Continue" button
+    by = panel_rect.bottom - bh - 18
+    rect = pygame.Rect(cx - bw // 2, by, bw, bh)
+    col = (110, 50, 50) if hovered == "continue" else (65, 30, 30)
+    border = (255, 90, 90) if hovered == "continue" else (120, 60, 60)
+    pygame.draw.rect(screen, col, rect, border_radius=10)
+    pygame.draw.rect(screen, border, rect, 2, border_radius=10)
+    _blit_icon_btn(
+        screen,
+        rect,
+        fonts["icon"],
+        "♛",
+        (255, 90, 90),
+        fonts["btn"],
+        S.SAVE_CORRUPT_CONTINUE,
+        (230, 230, 230),
+    )
+    return {"continue": rect}

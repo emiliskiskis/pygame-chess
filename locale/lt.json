@@ -70,5 +70,12 @@
   "ml_over_record": "{wins}L  {draws}Ly  {losses}P",
   "ml_over_games": "Partijos: {games}",
   "ml_over_game_length": "Ėjimai: {moves}",
-  "ml_over_confidence": "Pask. įvert.: {val:+.2f}"
+  "ml_over_confidence": "Pask. įvert.: {val:+.2f}",
+  "save_continue_title": "Tęsti išsaugotą žaidimą?",
+  "save_yes": "Taip, tęsti",
+  "save_no": "Ne, pradėti iš naujo",
+  "save_cancel": "Atšaukti",
+  "save_corrupt_title": "Išsaugojimo klaida",
+  "save_corrupt_msg": "Nepavyko įkelti išsaugoto žaidimo.",
+  "save_corrupt_continue": "Tęsti"
 }

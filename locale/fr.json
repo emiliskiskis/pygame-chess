@@ -70,5 +70,12 @@
   "ml_over_record": "{wins}V  {draws}N  {losses}D",
   "ml_over_games": "Parties : {games}",
   "ml_over_game_length": "Coups : {moves}",
-  "ml_over_confidence": "Dernière éval. : {val:+.2f}"
+  "ml_over_confidence": "Dernière éval. : {val:+.2f}",
+  "save_continue_title": "Reprendre la partie sauvegardée ?",
+  "save_yes": "Oui, reprendre",
+  "save_no": "Non, recommencer",
+  "save_cancel": "Annuler",
+  "save_corrupt_title": "Erreur de sauvegarde",
+  "save_corrupt_msg": "La partie sauvegardée ne peut pas être chargée.",
+  "save_corrupt_continue": "Continuer"
 }
