@@ -15,7 +15,7 @@ import threading
 
 import pygame
 
-from . import strings
+from . import profiles, strings
 from .constants import (
     ASSET_DIR,
     MODE_AI,
@@ -24,6 +24,7 @@ from .constants import (
     MODE_MENU,
     MODE_ML_AI,
     MODE_ML_SELF,
+    MODE_PROFILES,
 )
 from .engine.ai import ai_move
 from .engine.board import (
@@ -43,6 +44,7 @@ from .engine.ml_ai import (
     record_game_result,
     record_position,
     start_training_async,
+    unload_model,
 )
 from .engine.notation import parse_algebraic
 from .engine.pieces import load_flags, load_pieces, reload_pieces
@@ -53,7 +55,7 @@ from .savegame import (
     save_exists,
     save_game,
 )
-from .strings import S, available_locales, prefs_exist
+from .strings import S, available_locales
 from .strings import reload as reload_strings
 from .ui.layout import Layout
 from .ui.rendering import (
@@ -73,6 +75,7 @@ from .ui.rendering import (
     draw_notation_bar,
     draw_pause_menu,
     draw_pieces,
+    draw_profiles_screen,
     draw_self_play_speed,
     draw_status,
     draw_tip,
@@ -83,6 +86,14 @@ from .ui.rendering import (
 
 def main():
     pygame.init()
+
+    # Migrate legacy prefs.dat → profiles on first run
+    profiles.try_migrate_from_prefs()
+
+    # Determine startup language from active profile (or fall back to "en")
+    active = profiles.get_active_profile()
+    startup_lang = active["language"] if active else "en"
+    reload_strings(startup_lang)
 
     INIT_W, INIT_H = 960, 780
     screen = pygame.display.set_mode((INIT_W, INIT_H), pygame.RESIZABLE)
@@ -107,7 +118,7 @@ def main():
     resize_timer = 0  # ticks when we will apply it
     RESIZE_DELAY = 100  # ms quiet period before re-layout
 
-    mode = MODE_MENU if prefs_exist() else MODE_LANG_SELECT
+    mode = MODE_MENU if profiles.profiles_exist() else MODE_LANG_SELECT
     lang_select_hovered = None
     lang_select_rects = {}
     menu_hovered = None
@@ -117,6 +128,19 @@ def main():
     pause_rects = {}
     over_hovered = None
     over_rects = {}
+
+    # Profiles screen state
+    profiles_hovered = None
+    profiles_rects = {}
+    # Text-input dialog: editing existing profile name
+    profile_editing_id = None   # profile id being renamed, or None
+    profile_edit_text = ""
+    # Text-input dialog: creating a new profile
+    profile_creating = False
+    profile_create_text = ""
+    # Delete confirmation dialog
+    profile_deleting_id = None  # profile id pending deletion, or None
+    profile_dialog_hovered = None  # hovered key inside an active dialog
 
     bar_text = ""
     bar_error = False
@@ -389,9 +413,170 @@ def main():
                         if rect.collidepoint(mx, my):
                             reload_strings(k)
                             pygame.display.set_caption(S.WINDOW_TITLE)
+                            # Create the first (default) profile with chosen language
+                            p = profiles.create_profile("Player 1", k)
+                            profiles.set_active_profile(p["id"])
                             mode = MODE_MENU
                             lang_select_hovered = None
                             break
+                continue
+
+            # ── Profiles screen ───────────────────────────────────────────
+            if mode == MODE_PROFILES:
+                any_dialog = (
+                    profile_editing_id is not None
+                    or profile_creating
+                    or profile_deleting_id is not None
+                )
+
+                if event.type == pygame.KEYDOWN:
+                    if any_dialog and (
+                        profile_editing_id is not None or profile_creating
+                    ):
+                        # Text input for edit/create dialog
+                        if event.key == pygame.K_ESCAPE:
+                            profile_editing_id = None
+                            profile_creating = False
+                            profile_edit_text = ""
+                            profile_create_text = ""
+                            profile_dialog_hovered = None
+                        elif event.key == pygame.K_RETURN:
+                            txt = (
+                                profile_create_text
+                                if profile_creating
+                                else profile_edit_text
+                            )
+                            if txt.strip():
+                                if profile_creating:
+                                    active_p = profiles.get_active_profile()
+                                    lang = active_p["language"] if active_p else "en"
+                                    p = profiles.create_profile(txt.strip(), lang)
+                                    profiles.set_active_profile(p["id"])
+                                    unload_model()
+                                    reload_strings(lang)
+                                    pygame.display.set_caption(S.WINDOW_TITLE)
+                                    profile_creating = False
+                                    profile_create_text = ""
+                                else:
+                                    profiles.rename_profile(
+                                        profile_editing_id, txt.strip()
+                                    )
+                                    profile_editing_id = None
+                                    profile_edit_text = ""
+                                profile_dialog_hovered = None
+                        elif event.key == pygame.K_BACKSPACE:
+                            if profile_creating:
+                                profile_create_text = profile_create_text[:-1]
+                            else:
+                                profile_edit_text = profile_edit_text[:-1]
+                        else:
+                            ch = event.unicode
+                            if ch and ch.isprintable():
+                                if profile_creating:
+                                    if len(profile_create_text) < 30:
+                                        profile_create_text += ch
+                                else:
+                                    if len(profile_edit_text) < 30:
+                                        profile_edit_text += ch
+                    elif any_dialog and profile_deleting_id is not None:
+                        if event.key == pygame.K_ESCAPE:
+                            profile_deleting_id = None
+                            profile_dialog_hovered = None
+                    else:
+                        if event.key == pygame.K_ESCAPE:
+                            mode = MODE_MENU
+                            profiles_hovered = None
+                    continue
+
+                if event.type == pygame.MOUSEMOTION:
+                    profile_dialog_hovered = None
+                    profiles_hovered = None
+                    for k, rect in profiles_rects.items():
+                        if rect.collidepoint(mx, my):
+                            if any_dialog:
+                                if k.startswith("dialog_"):
+                                    profile_dialog_hovered = k
+                            else:
+                                profiles_hovered = k
+
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    for k, rect in profiles_rects.items():
+                        if not rect.collidepoint(mx, my):
+                            continue
+                        if any_dialog:
+                            if k == "dialog_cancel":
+                                profile_editing_id = None
+                                profile_creating = False
+                                profile_edit_text = ""
+                                profile_create_text = ""
+                                profile_deleting_id = None
+                                profile_dialog_hovered = None
+                            elif k == "dialog_ok":
+                                txt = (
+                                    profile_create_text
+                                    if profile_creating
+                                    else profile_edit_text
+                                )
+                                if txt.strip():
+                                    if profile_creating:
+                                        active_p = profiles.get_active_profile()
+                                        lang = active_p["language"] if active_p else "en"
+                                        p = profiles.create_profile(txt.strip(), lang)
+                                        profiles.set_active_profile(p["id"])
+                                        unload_model()
+                                        reload_strings(lang)
+                                        pygame.display.set_caption(S.WINDOW_TITLE)
+                                        profile_creating = False
+                                        profile_create_text = ""
+                                    else:
+                                        profiles.rename_profile(
+                                            profile_editing_id, txt.strip()
+                                        )
+                                        profile_editing_id = None
+                                        profile_edit_text = ""
+                                    profile_dialog_hovered = None
+                            elif k == "dialog_yes":
+                                profiles.delete_profile(profile_deleting_id)
+                                profile_deleting_id = None
+                                profile_dialog_hovered = None
+                            elif k == "dialog_no":
+                                profile_deleting_id = None
+                                profile_dialog_hovered = None
+                        else:
+                            if k == "back":
+                                mode = MODE_MENU
+                                profiles_hovered = None
+                            elif k == "new":
+                                profile_creating = True
+                                profile_create_text = ""
+                                profile_dialog_hovered = None
+                            elif k.startswith("select_"):
+                                pid = k[len("select_"):]
+                                if pid != profiles.get_active_id():
+                                    _save_current_game()
+                                    profiles.set_active_profile(pid)
+                                    unload_model()
+                                    active_p = profiles.get_active_profile()
+                                    lang = active_p["language"] if active_p else "en"
+                                    reload_strings(lang)
+                                    pygame.display.set_caption(S.WINDOW_TITLE)
+                                    mode = MODE_MENU
+                                    profiles_hovered = None
+                            elif k.startswith("edit_"):
+                                pid = k[len("edit_"):]
+                                p = next(
+                                    (x for x in profiles.get_profiles() if x["id"] == pid),
+                                    None,
+                                )
+                                if p:
+                                    profile_editing_id = pid
+                                    profile_edit_text = p["name"]
+                                    profile_dialog_hovered = None
+                            elif k.startswith("delete_"):
+                                pid = k[len("delete_"):]
+                                profile_deleting_id = pid
+                                profile_dialog_hovered = None
+                        break
                 continue
 
             # ── Menu ──────────────────────────────────────────────────────
@@ -470,6 +655,7 @@ def main():
                                 lang_open = not lang_open
                             else:
                                 reload_strings(k)
+                                profiles.set_active_language(k)
                                 pygame.display.set_caption(S.WINDOW_TITLE)
                                 if board is not None:
                                     status_msg, game_over = post_move_status(
@@ -482,7 +668,11 @@ def main():
                         lang_open = False
                         for m, rect in menu_rects.items():
                             if rect.collidepoint(mx, my):
-                                if m in SAVEABLE_MODES and save_exists(m):
+                                if m == MODE_PROFILES:
+                                    mode = MODE_PROFILES
+                                    profiles_hovered = None
+                                    profiles_rects = {}
+                                elif m in SAVEABLE_MODES and save_exists(m):
                                     # Show continue/new-game popup
                                     save_popup_pending_mode = m
                                     save_popup_hovered = None
@@ -512,6 +702,7 @@ def main():
                                 lang_open = not lang_open
                             else:
                                 reload_strings(k)
+                                profiles.set_active_language(k)
                                 pygame.display.set_caption(S.WINDOW_TITLE)
                                 status_msg, game_over = post_move_status(
                                     board, turn, last_move, castling_rights, mode
@@ -750,8 +941,26 @@ def main():
             lang_select_rects = draw_lang_select(
                 screen, fonts, flags, locales, lang_select_hovered, L
             )
+        elif mode == MODE_PROFILES:
+            active_p = profiles.get_active_profile()
+            profiles_rects = draw_profiles_screen(
+                screen,
+                fonts,
+                profiles.get_profiles(),
+                profiles.get_active_id(),
+                profiles_hovered,
+                L,
+                editing_id=profile_editing_id,
+                edit_text=profile_edit_text,
+                creating=profile_creating,
+                create_text=profile_create_text,
+                deleting_id=profile_deleting_id,
+                dialog_hovered=profile_dialog_hovered,
+            )
         elif mode == MODE_MENU:
-            menu_rects = draw_menu(screen, fonts, menu_hovered, L)
+            active_p = profiles.get_active_profile()
+            profile_name = active_p["name"] if active_p else ""
+            menu_rects = draw_menu(screen, fonts, menu_hovered, L, profile_name=profile_name)
             lang_rects = draw_lang_picker(
                 screen,
                 fonts,

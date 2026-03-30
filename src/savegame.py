@@ -1,9 +1,9 @@
 """
-savegame.py — Per-mode game state persistence.
+savegame.py — Per-mode, per-profile game state persistence.
 
-Each saveable game mode gets its own JSON file stored under saves/ in the
-project root. The directory is created automatically on first write.
-The file name is saves/save_<mode>.json.
+Each saveable game mode gets its own JSON file stored under
+saves/<profile_id>/ in the project root.
+The file name is saves/<profile_id>/save_<mode>.json.
 
 Saveable modes: pvp, ai, learning, ml_ai
 NOT saved: ml_self (spectator-only automated mode)
@@ -12,16 +12,20 @@ NOT saved: ml_self (spectator-only automated mode)
 import json
 from pathlib import Path
 
-_SAVE_DIR = Path(__file__).parent.parent / "saves"
+from .profiles import get_save_dir
 
 SAVEABLE_MODES = {"pvp", "ai", "learning", "ml_ai"}
 
-_SAVE_FILES = {
-    "pvp": _SAVE_DIR / "save_pvp.json",
-    "ai": _SAVE_DIR / "save_ai.json",
-    "learning": _SAVE_DIR / "save_learning.json",
-    "ml_ai": _SAVE_DIR / "save_ml_ai.json",
+_SAVE_NAMES = {
+    "pvp": "save_pvp.json",
+    "ai": "save_ai.json",
+    "learning": "save_learning.json",
+    "ml_ai": "save_ml_ai.json",
 }
+
+
+def _save_path(mode: str) -> Path:
+    return get_save_dir() / _SAVE_NAMES[mode]
 
 
 def save_game(mode, board, turn, last_move, castling_rights, move_history, flipped):
@@ -29,7 +33,7 @@ def save_game(mode, board, turn, last_move, castling_rights, move_history, flipp
 
     Silently ignores unsaveable modes or I/O errors so callers never crash.
     """
-    if mode not in _SAVE_FILES:
+    if mode not in _SAVE_NAMES:
         return
     data = {
         "mode": mode,
@@ -41,8 +45,9 @@ def save_game(mode, board, turn, last_move, castling_rights, move_history, flipp
         "flipped": flipped,
     }
     try:
-        _SAVE_DIR.mkdir(exist_ok=True)
-        _SAVE_FILES[mode].write_text(json.dumps(data, indent=2), encoding="utf-8")
+        save_dir = get_save_dir()
+        save_dir.mkdir(parents=True, exist_ok=True)
+        _save_path(mode).write_text(json.dumps(data, indent=2), encoding="utf-8")
     except OSError:
         pass
 
@@ -55,9 +60,9 @@ def load_game(mode):
 
     Raises ValueError if no save exists or if the file is corrupt / incomplete.
     """
-    if mode not in _SAVE_FILES:
+    if mode not in _SAVE_NAMES:
         raise ValueError(f"No save slot for mode {mode!r}")
-    path = _SAVE_FILES[mode]
+    path = _save_path(mode)
     if not path.exists():
         raise ValueError("No save file found")
     try:
@@ -96,17 +101,17 @@ def load_game(mode):
 
 def delete_save(mode):
     """Delete the save file for *mode*. Silent on missing file or errors."""
-    if mode not in _SAVE_FILES:
+    if mode not in _SAVE_NAMES:
         return
     try:
-        _SAVE_FILES[mode].unlink(missing_ok=True)
+        _save_path(mode).unlink(missing_ok=True)
     except OSError:
         pass
 
 
 def save_exists(mode):
     """Return True if a non-empty save file exists for *mode*."""
-    if mode not in _SAVE_FILES:
+    if mode not in _SAVE_NAMES:
         return False
-    p = _SAVE_FILES[mode]
+    p = _save_path(mode)
     return p.exists() and p.stat().st_size > 0

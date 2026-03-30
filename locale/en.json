@@ -78,5 +78,18 @@
   "save_cancel": "Cancel",
   "save_corrupt_title": "Save Error",
   "save_corrupt_msg": "The saved game could not be loaded.",
-  "save_corrupt_continue": "Continue"
+  "save_corrupt_continue": "Continue",
+
+  "profiles_title": "Profiles",
+  "profiles_new": "New Profile",
+  "profiles_back": "Back",
+  "profiles_active_indicator": "✓",
+  "profiles_delete_title": "Delete Profile?",
+  "profiles_delete_msg": "All saved games and the ML AI model for this profile will be permanently deleted.",
+  "profiles_confirm_delete": "Delete",
+  "profiles_cancel": "Cancel",
+  "profiles_edit_title": "Edit Profile Name",
+  "profiles_create_title": "New Profile",
+  "profiles_name_placeholder": "Enter a name…",
+  "profiles_save": "Save"
 }

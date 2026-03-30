@@ -24,6 +24,7 @@ PANEL_TEXT_B = (180, 180, 180)
 
 MODE_LANG_SELECT = "lang_select"
 MODE_MENU = "menu"
+MODE_PROFILES = "profiles"
 MODE_PVP = "pvp"
 MODE_AI = "ai"
 MODE_LEARNING = "learning"

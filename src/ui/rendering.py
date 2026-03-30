@@ -12,6 +12,7 @@ from ..constants import (
     MODE_LEARNING,
     MODE_ML_AI,
     MODE_ML_SELF,
+    MODE_PROFILES,
     MODE_PVP,
     PANEL_BG,
     PANEL_HEADER,
@@ -356,7 +357,7 @@ def _draw_gradient(screen, w, h, top_col, bottom_col):
         pygame.draw.line(screen, (r, g, b), (0, y), (w, y))
 
 
-def draw_menu(screen, fonts, hovered, L):
+def draw_menu(screen, fonts, hovered, L, profile_name=""):
     _draw_gradient(
         screen, screen.get_width(), screen.get_height(), (91, 44, 111), (247, 220, 111)
     )
@@ -406,6 +407,20 @@ def draw_menu(screen, fonts, hovered, L):
         )
         ds = fonts["sub"].render(desc, True, (160, 160, 160))
         screen.blit(ds, ds.get_rect(midleft=(bx + 16, by + 2 * bh // 3)))
+
+    # Profile button — top-left corner
+    if profile_name:
+        p_label = f"\u25a3  {profile_name}"
+        p_surf = fonts["sub"].render(p_label, True, (220, 220, 220))
+        pad = 8
+        p_w = p_surf.get_width() + pad * 2
+        p_h = p_surf.get_height() + pad * 2
+        p_rect = pygame.Rect(8, 8, p_w, p_h)
+        rects[MODE_PROFILES] = p_rect
+        p_bg = (80, 80, 110) if hovered == MODE_PROFILES else (50, 50, 75)
+        pygame.draw.rect(screen, p_bg, p_rect, border_radius=6)
+        pygame.draw.rect(screen, (120, 120, 160), p_rect, 1, border_radius=6)
+        screen.blit(p_surf, (p_rect.x + pad, p_rect.y + pad))
 
     hint = fonts["sub"].render(S.MENU_HINT, True, (80, 80, 80))
     screen.blit(hint, hint.get_rect(center=(L.window_w // 2, L.window_h - 22)))
@@ -886,3 +901,282 @@ def draw_corrupt_popup(screen, fonts, hovered, L):
         (230, 230, 230),
     )
     return {"continue": rect}
+
+
+def draw_profiles_screen(
+    screen,
+    fonts,
+    profiles,
+    active_id,
+    hovered,
+    L,
+    editing_id=None,
+    edit_text="",
+    creating=False,
+    create_text="",
+    deleting_id=None,
+    dialog_hovered=None,
+):
+    """
+    Full profiles management screen.
+
+    Returns a flat dict of pygame.Rects keyed by:
+      "back"            – back button
+      "new"             – new profile button
+      "select_<id>"     – click a profile row to set it active
+      "edit_<id>"       – rename button for profile <id>
+      "delete_<id>"     – delete button for profile <id> (absent for active)
+      "dialog_ok"       – OK / Save button inside the text-input dialog
+      "dialog_cancel"   – Cancel button inside the text-input dialog
+      "dialog_yes"      – Confirm delete button inside the confirm dialog
+      "dialog_no"       – Cancel button inside the confirm dialog
+    """
+    _draw_gradient(
+        screen, screen.get_width(), screen.get_height(), (91, 44, 111), (247, 220, 111)
+    )
+
+    cx = L.window_w // 2
+    rects = {}
+
+    # ── Title ──────────────────────────────────────────────────────────────────
+    title_surf = fonts["over"].render(S.PROFILES_TITLE, True, (255, 220, 50))
+    screen.blit(title_surf, title_surf.get_rect(center=(cx, 50)))
+
+    # ── Profile list ───────────────────────────────────────────────────────────
+    row_h = max(48, L.tile - 12)
+    gap = row_h + 10
+    list_w = min(560, L.window_w - 80)
+    btn_w = max(60, L.tile - 20)
+    btn_gap = 8
+    # start y leaves room for title
+    list_start_y = 100
+
+    for i, p in enumerate(profiles):
+        pid = p["id"]
+        is_active = pid == active_id
+        ry = list_start_y + i * gap
+
+        # Row background (full width)
+        row_rect = pygame.Rect(cx - list_w // 2, ry, list_w, row_h)
+        rects[f"select_{pid}"] = row_rect
+        row_col = (55, 55, 80) if is_active else (40, 40, 58)
+        row_border = (255, 220, 50) if is_active else (80, 80, 100)
+        if hovered == f"select_{pid}" and not is_active:
+            row_col = (65, 65, 90)
+        pygame.draw.rect(screen, row_col, row_rect, border_radius=10)
+        pygame.draw.rect(screen, row_border, row_rect, 2, border_radius=10)
+
+        # Active checkmark
+        x_cursor = row_rect.x + 14
+        if is_active:
+            chk = fonts["btn"].render(S.PROFILES_ACTIVE_INDICATOR, True, (100, 220, 100))
+            screen.blit(chk, chk.get_rect(midleft=(x_cursor, ry + row_h // 2)))
+            x_cursor += chk.get_width() + 8
+
+        # Profile name
+        name_col = (240, 240, 240) if is_active else (200, 200, 200)
+        name_surf = fonts["btn"].render(p["name"], True, name_col)
+        screen.blit(name_surf, name_surf.get_rect(midleft=(x_cursor, ry + row_h // 2)))
+
+        # Action buttons on the right
+        buttons_right = row_rect.right - 10
+        # Delete (not shown for active profile)
+        if not is_active:
+            del_rect = pygame.Rect(
+                buttons_right - btn_w, ry + (row_h - 30) // 2, btn_w, 30
+            )
+            rects[f"delete_{pid}"] = del_rect
+            del_col = (120, 40, 40) if hovered == f"delete_{pid}" else (80, 30, 30)
+            del_border = (220, 80, 80) if hovered == f"delete_{pid}" else (140, 60, 60)
+            pygame.draw.rect(screen, del_col, del_rect, border_radius=6)
+            pygame.draw.rect(screen, del_border, del_rect, 1, border_radius=6)
+            del_s = fonts["sub"].render("✕", True, (255, 120, 120))
+            screen.blit(del_s, del_s.get_rect(center=del_rect.center))
+            buttons_right = del_rect.x - btn_gap
+
+        # Edit button
+        edit_rect = pygame.Rect(
+            buttons_right - btn_w, ry + (row_h - 30) // 2, btn_w, 30
+        )
+        rects[f"edit_{pid}"] = edit_rect
+        edit_col = (50, 80, 120) if hovered == f"edit_{pid}" else (35, 55, 85)
+        edit_border = (100, 160, 255) if hovered == f"edit_{pid}" else (70, 100, 150)
+        pygame.draw.rect(screen, edit_col, edit_rect, border_radius=6)
+        pygame.draw.rect(screen, edit_border, edit_rect, 1, border_radius=6)
+        edit_s = fonts["sub"].render("✎", True, (160, 200, 255))
+        screen.blit(edit_s, edit_s.get_rect(center=edit_rect.center))
+
+    # ── Bottom buttons ─────────────────────────────────────────────────────────
+    bottom_y = list_start_y + len(profiles) * gap + 20
+    bb_h = max(40, L.tile - 20)
+    bb_w = min(200, list_w // 2 - 10)
+
+    back_rect = pygame.Rect(cx - list_w // 2, bottom_y, bb_w, bb_h)
+    rects["back"] = back_rect
+    back_col = (60, 60, 80) if hovered == "back" else (40, 40, 58)
+    back_border = (180, 180, 220) if hovered == "back" else (80, 80, 100)
+    pygame.draw.rect(screen, back_col, back_rect, border_radius=10)
+    pygame.draw.rect(screen, back_border, back_rect, 2, border_radius=10)
+    back_s = fonts["btn"].render(S.PROFILES_BACK, True, (200, 200, 200))
+    screen.blit(back_s, back_s.get_rect(center=back_rect.center))
+
+    new_rect = pygame.Rect(cx + list_w // 2 - bb_w, bottom_y, bb_w, bb_h)
+    rects["new"] = new_rect
+    new_col = (40, 80, 50) if hovered == "new" else (28, 58, 36)
+    new_border = (80, 200, 100) if hovered == "new" else (60, 120, 70)
+    pygame.draw.rect(screen, new_col, new_rect, border_radius=10)
+    pygame.draw.rect(screen, new_border, new_rect, 2, border_radius=10)
+    new_s = fonts["btn"].render(S.PROFILES_NEW, True, (150, 230, 160))
+    screen.blit(new_s, new_s.get_rect(center=new_rect.center))
+
+    # ── Text-input dialog (edit name or create new) ────────────────────────────
+    if editing_id is not None or creating:
+        _draw_name_input_dialog(
+            screen, fonts, L, cx,
+            title=S.PROFILES_CREATE_TITLE if creating else S.PROFILES_EDIT_TITLE,
+            text=create_text if creating else edit_text,
+            hovered=dialog_hovered,
+            rects=rects,
+        )
+
+    # ── Delete confirmation dialog ─────────────────────────────────────────────
+    elif deleting_id is not None:
+        del_profile = next((p for p in profiles if p["id"] == deleting_id), None)
+        del_name = del_profile["name"] if del_profile else ""
+        _draw_delete_confirm_dialog(
+            screen, fonts, L, cx, del_name, dialog_hovered, rects
+        )
+
+    return rects
+
+
+def _draw_name_input_dialog(screen, fonts, L, cx, title, text, hovered, rects):
+    """Semi-transparent overlay with a text-input field, Save and Cancel buttons."""
+    ov = pygame.Surface((L.window_w, L.window_h), pygame.SRCALPHA)
+    ov.fill((0, 0, 0, 200))
+    screen.blit(ov, (0, 0))
+
+    dlg_w = min(400, L.window_w - 80)
+    dlg_h = 200
+    cy = L.window_h // 2
+    dlg_rect = pygame.Rect(cx - dlg_w // 2, cy - dlg_h // 2, dlg_w, dlg_h)
+    pygame.draw.rect(screen, (30, 30, 48), dlg_rect, border_radius=14)
+    pygame.draw.rect(screen, (80, 80, 130), dlg_rect, 2, border_radius=14)
+
+    title_surf = fonts["over"].render(title, True, (255, 220, 50))
+    screen.blit(title_surf, title_surf.get_rect(center=(cx, dlg_rect.top + 30)))
+
+    # Text input field
+    field_w = dlg_w - 40
+    field_rect = pygame.Rect(cx - field_w // 2, dlg_rect.top + 60, field_w, 36)
+    pygame.draw.rect(screen, (50, 50, 70), field_rect, border_radius=6)
+    pygame.draw.rect(screen, (120, 120, 180), field_rect, 2, border_radius=6)
+    display_text = text if text else S.PROFILES_NAME_PLACEHOLDER
+    text_col = (230, 230, 230) if text else (100, 100, 120)
+    text_surf = fonts["btn"].render(display_text, True, text_col)
+    screen.blit(
+        text_surf,
+        text_surf.get_rect(midleft=(field_rect.x + 10, field_rect.centery)),
+    )
+    # Cursor bar when there is input text
+    if text:
+        cursor_x = field_rect.x + 10 + text_surf.get_width() + 2
+        pygame.draw.line(
+            screen,
+            (200, 200, 220),
+            (cursor_x, field_rect.top + 6),
+            (cursor_x, field_rect.bottom - 6),
+            2,
+        )
+
+    # Buttons
+    btn_w = (dlg_w - 60) // 2
+    btn_h = 36
+    btn_y = dlg_rect.bottom - btn_h - 18
+
+    cancel_rect = pygame.Rect(cx - dlg_w // 2 + 20, btn_y, btn_w, btn_h)
+    rects["dialog_cancel"] = cancel_rect
+    c_bg = (70, 50, 50) if hovered == "dialog_cancel" else (50, 35, 35)
+    c_br = (200, 100, 100) if hovered == "dialog_cancel" else (140, 80, 80)
+    pygame.draw.rect(screen, c_bg, cancel_rect, border_radius=8)
+    pygame.draw.rect(screen, c_br, cancel_rect, 1, border_radius=8)
+    cs = fonts["btn"].render(S.PROFILES_CANCEL, True, (220, 160, 160))
+    screen.blit(cs, cs.get_rect(center=cancel_rect.center))
+
+    ok_rect = pygame.Rect(cx + dlg_w // 2 - 20 - btn_w, btn_y, btn_w, btn_h)
+    rects["dialog_ok"] = ok_rect
+    ok_enabled = bool(text.strip())
+    ok_bg = (40, 90, 50) if hovered == "dialog_ok" and ok_enabled else (28, 65, 36)
+    ok_br = (80, 200, 100) if hovered == "dialog_ok" and ok_enabled else (50, 120, 65)
+    if not ok_enabled:
+        ok_bg = (30, 40, 30)
+        ok_br = (50, 70, 50)
+    pygame.draw.rect(screen, ok_bg, ok_rect, border_radius=8)
+    pygame.draw.rect(screen, ok_br, ok_rect, 1, border_radius=8)
+    ok_col = (150, 230, 160) if ok_enabled else (80, 100, 80)
+    ok_s = fonts["btn"].render(S.PROFILES_SAVE, True, ok_col)
+    screen.blit(ok_s, ok_s.get_rect(center=ok_rect.center))
+
+
+def _draw_delete_confirm_dialog(screen, fonts, L, cx, profile_name, hovered, rects):
+    """Semi-transparent overlay confirming profile deletion."""
+    ov = pygame.Surface((L.window_w, L.window_h), pygame.SRCALPHA)
+    ov.fill((0, 0, 0, 210))
+    screen.blit(ov, (0, 0))
+
+    dlg_w = min(440, L.window_w - 80)
+    dlg_h = 220
+    cy = L.window_h // 2
+    dlg_rect = pygame.Rect(cx - dlg_w // 2, cy - dlg_h // 2, dlg_w, dlg_h)
+    pygame.draw.rect(screen, (48, 20, 20), dlg_rect, border_radius=14)
+    pygame.draw.rect(screen, (160, 60, 60), dlg_rect, 2, border_radius=14)
+
+    title_surf = fonts["over"].render(S.PROFILES_DELETE_TITLE, True, (255, 90, 90))
+    screen.blit(title_surf, title_surf.get_rect(center=(cx, dlg_rect.top + 34)))
+
+    name_surf = fonts["btn"].render(f'"{profile_name}"', True, (255, 180, 100))
+    screen.blit(name_surf, name_surf.get_rect(center=(cx, dlg_rect.top + 72)))
+
+    # Wrap the warning message
+    msg_words = S.PROFILES_DELETE_MSG.split()
+    lines = []
+    line = []
+    max_w = dlg_w - 40
+    for word in msg_words:
+        test = " ".join(line + [word])
+        if fonts["sub"].size(test)[0] <= max_w:
+            line.append(word)
+        else:
+            if line:
+                lines.append(" ".join(line))
+            line = [word]
+    if line:
+        lines.append(" ".join(line))
+
+    msg_y = dlg_rect.top + 100
+    for ln in lines:
+        ln_surf = fonts["sub"].render(ln, True, (200, 160, 160))
+        screen.blit(ln_surf, ln_surf.get_rect(center=(cx, msg_y)))
+        msg_y += fonts["sub"].get_linesize()
+
+    btn_w = (dlg_w - 60) // 2
+    btn_h = 36
+    btn_y = dlg_rect.bottom - btn_h - 18
+
+    no_rect = pygame.Rect(cx - dlg_w // 2 + 20, btn_y, btn_w, btn_h)
+    rects["dialog_no"] = no_rect
+    no_bg = (50, 60, 80) if hovered == "dialog_no" else (35, 42, 58)
+    no_br = (130, 160, 220) if hovered == "dialog_no" else (80, 100, 140)
+    pygame.draw.rect(screen, no_bg, no_rect, border_radius=8)
+    pygame.draw.rect(screen, no_br, no_rect, 1, border_radius=8)
+    no_s = fonts["btn"].render(S.PROFILES_CANCEL, True, (180, 200, 240))
+    screen.blit(no_s, no_s.get_rect(center=no_rect.center))
+
+    yes_rect = pygame.Rect(cx + dlg_w // 2 - 20 - btn_w, btn_y, btn_w, btn_h)
+    rects["dialog_yes"] = yes_rect
+    yes_bg = (120, 35, 35) if hovered == "dialog_yes" else (80, 25, 25)
+    yes_br = (220, 80, 80) if hovered == "dialog_yes" else (150, 60, 60)
+    pygame.draw.rect(screen, yes_bg, yes_rect, border_radius=8)
+    pygame.draw.rect(screen, yes_br, yes_rect, 1, border_radius=8)
+    yes_s = fonts["btn"].render(S.PROFILES_CONFIRM_DELETE, True, (255, 130, 130))
+    screen.blit(yes_s, yes_s.get_rect(center=yes_rect.center))

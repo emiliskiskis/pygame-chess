@@ -10,28 +10,8 @@ import json
 from pathlib import Path
 
 _LOCALE_DIR = Path(__file__).parent.parent / "locale"
-_PREFS_FILE = Path(__file__).parent.parent / "prefs.dat"
 
 CURRENT_LOCALE = "en"
-
-
-def _save_locale(locale):
-    try:
-        _PREFS_FILE.write_text(locale, encoding="utf-8")
-    except OSError:
-        pass
-
-
-def _load_locale():
-    try:
-        return _PREFS_FILE.read_text(encoding="utf-8").strip()
-    except OSError:
-        return "en"
-
-
-def prefs_exist():
-    """Return True if a saved locale preference file exists."""
-    return _PREFS_FILE.exists()
 
 
 def available_locales():
@@ -138,9 +118,27 @@ class S:
     ML_OVER_GAME_LENGTH = ""
     ML_OVER_CONFIDENCE = ""
 
+    # Profiles screen
+    PROFILES_TITLE = ""
+    PROFILES_NEW = ""
+    PROFILES_BACK = ""
+    PROFILES_ACTIVE_INDICATOR = ""
+    PROFILES_DELETE_TITLE = ""
+    PROFILES_DELETE_MSG = ""
+    PROFILES_CONFIRM_DELETE = ""
+    PROFILES_CANCEL = ""
+    PROFILES_EDIT_TITLE = ""
+    PROFILES_CREATE_TITLE = ""
+    PROFILES_NAME_PLACEHOLDER = ""
+    PROFILES_SAVE = ""
 
-def reload(locale="en", save=True):
-    """Load locale/<locale>.json into S. Falls back to en if missing."""
+
+def reload(locale="en", save=False):
+    """Load locale/<locale>.json into S. Falls back to en if missing.
+
+    The ``save`` parameter is kept for API compatibility but is a no-op;
+    language persistence is handled by the profiles module.
+    """
     global CURRENT_LOCALE
     path = _LOCALE_DIR / f"{locale}.json"
     if not path.exists():
@@ -148,8 +146,6 @@ def reload(locale="en", save=True):
         locale = "en"
     d = json.loads(path.read_text(encoding="utf-8"))
     CURRENT_LOCALE = locale
-    if save:
-        _save_locale(locale)
 
     S.WINDOW_TITLE = d["window_title"]
     S.MENU_TITLE = d["menu_title"]
@@ -224,6 +220,23 @@ def reload(locale="en", save=True):
     )
     S.SAVE_CORRUPT_CONTINUE = d.get("save_corrupt_continue", "Continue")
 
+    # Profiles screen
+    S.PROFILES_TITLE = d.get("profiles_title", "Profiles")
+    S.PROFILES_NEW = d.get("profiles_new", "New Profile")
+    S.PROFILES_BACK = d.get("profiles_back", "Back")
+    S.PROFILES_ACTIVE_INDICATOR = d.get("profiles_active_indicator", "\u2713")
+    S.PROFILES_DELETE_TITLE = d.get("profiles_delete_title", "Delete Profile?")
+    S.PROFILES_DELETE_MSG = d.get(
+        "profiles_delete_msg",
+        "All saved games and the ML AI model for this profile will be permanently deleted.",
+    )
+    S.PROFILES_CONFIRM_DELETE = d.get("profiles_confirm_delete", "Delete")
+    S.PROFILES_CANCEL = d.get("profiles_cancel", "Cancel")
+    S.PROFILES_EDIT_TITLE = d.get("profiles_edit_title", "Edit Profile Name")
+    S.PROFILES_CREATE_TITLE = d.get("profiles_create_title", "New Profile")
+    S.PROFILES_NAME_PLACEHOLDER = d.get("profiles_name_placeholder", "Enter a name\u2026")
+    S.PROFILES_SAVE = d.get("profiles_save", "Save")
 
-# Load default on import — don't create prefs.dat if it doesn't exist yet
-reload(_load_locale(), save=_PREFS_FILE.exists())
+
+# Load English on import (no side-effects; main.py will reload with profile language)
+reload("en", save=False)

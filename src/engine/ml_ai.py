@@ -15,7 +15,6 @@ Manages a single global ChessResNet model, providing:
   - clear_game_history()    : reset recorded positions for a new game
 """
 
-import os
 import threading
 
 import torch
@@ -23,10 +22,7 @@ import torch.nn as nn
 
 from .board import all_legal_moves
 from .ml_model import ChessResNet, board_to_tensor, move_to_index
-
-_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-MODEL_DIR = os.path.join(_SCRIPT_DIR, "..", "..", "models")
-MODEL_PATH = os.path.join(MODEL_DIR, "model.pt")
+from ..profiles import get_model_path as _get_model_path
 
 # ── Global model state ─────────────────────────────────────────────────────────
 _model = None
@@ -62,8 +58,9 @@ def _ensure_model():
     _model = ChessResNet()
     _optimizer = torch.optim.Adam(_model.parameters(), lr=1e-4)
 
-    if os.path.exists(MODEL_PATH):
-        checkpoint = torch.load(MODEL_PATH, map_location="cpu", weights_only=False)
+    model_path = _get_model_path()
+    if model_path.exists():
+        checkpoint = torch.load(str(model_path), map_location="cpu", weights_only=False)
         _model.load_state_dict(checkpoint["model"])
         _optimizer.load_state_dict(checkpoint["optimizer"])
         _elo = checkpoint.get("elo", 800)
@@ -78,7 +75,8 @@ def _ensure_model():
 
 def _save_model():
     """Persist model weights, optimizer state, and stats to disk."""
-    os.makedirs(MODEL_DIR, exist_ok=True)
+    model_path = _get_model_path()
+    model_path.parent.mkdir(parents=True, exist_ok=True)
     torch.save(
         {
             "model": _model.state_dict(),
@@ -89,8 +87,29 @@ def _save_model():
             "losses": _losses,
             "draws": _draws,
         },
-        MODEL_PATH,
+        str(model_path),
     )
+
+
+def unload_model() -> None:
+    """
+    Reset all in-memory model state.
+
+    Call this when switching the active profile so that the next call to
+    _ensure_model() loads the new profile's checkpoint from disk.
+    """
+    global _model, _optimizer
+    global _elo, _games_played, _wins, _losses, _draws
+    global _last_value_estimate, _game_positions
+    _model = None
+    _optimizer = None
+    _elo = 800
+    _games_played = 0
+    _wins = 0
+    _losses = 0
+    _draws = 0
+    _last_value_estimate = 0.0
+    _game_positions = []
 
 
 # ── Public stats API ───────────────────────────────────────────────────────────
