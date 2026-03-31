@@ -2,13 +2,15 @@
 """
 train_selfplay.py — Self-play training for the chess ML model.
 
+Two independent models (white and black) play against each other and are
+trained simultaneously on their own colour's positions.
+
 Usage:
     python train_selfplay.py --games 1000
-    python train_selfplay.py --games 5000 --save-every 100 --max-moves 300
+    python train_selfplay.py --games 5000 --save-every 100 --max-moves 250
 """
 
 import argparse
-import copy
 import os
 import sys
 import time
@@ -20,19 +22,23 @@ import torch.nn as nn
 sys.path.insert(0, os.path.dirname(__file__))
 
 from src.engine.board import (
-    starting_board,
     all_legal_moves,
     execute_move,
     is_in_check,
     opponent,
+    starting_board,
 )
 from src.engine.ml_model import ChessResNet, board_to_tensor, move_to_index
 
 MODEL_DIR = os.path.join(os.path.dirname(__file__), "models")
-MODEL_PATH = os.path.join(MODEL_DIR, "model.pt")
+MODEL_WHITE_PATH = os.path.join(MODEL_DIR, "model_white.pt")
+MODEL_BLACK_PATH = os.path.join(MODEL_DIR, "model_black.pt")
+# Legacy single-model path kept for backward-compat loading only
+_MODEL_LEGACY_PATH = os.path.join(MODEL_DIR, "model.pt")
 
 
 # ── Dashboard ────────────────────────────────────────────────────────────────
+
 
 class Dashboard:
     """Terminal dashboard using ANSI escape codes."""
@@ -45,15 +51,17 @@ class Dashboard:
         self.black_wins = 0
         self.draws = 0
         self.game_lengths = []
-        self.losses = []
+        self.white_losses = []
+        self.black_losses = []
         self.current_move = 0
         self.current_turn = "white"
         self.last_result = ""
 
-    def update_game(self, result, length, loss):
+    def update_game(self, result, length, white_loss, black_loss):
         self.games_done += 1
         self.game_lengths.append(length)
-        self.losses.append(loss)
+        self.white_losses.append(white_loss)
+        self.black_losses.append(black_loss)
         if result > 0:
             self.white_wins += 1
             self.last_result = "White won"
@@ -76,8 +84,10 @@ class Dashboard:
         last10 = self.game_lengths[-10:]
         avg_last10 = sum(last10) / max(len(last10), 1)
 
-        last_loss = self.losses[-1] if self.losses else 0.0
-        avg_loss = sum(self.losses) / max(len(self.losses), 1)
+        last_w_loss = self.white_losses[-1] if self.white_losses else 0.0
+        last_b_loss = self.black_losses[-1] if self.black_losses else 0.0
+        avg_w_loss = sum(self.white_losses) / max(len(self.white_losses), 1)
+        avg_b_loss = sum(self.black_losses) / max(len(self.black_losses), 1)
 
         games_per_sec = self.games_done / max(elapsed, 0.1)
         eta = (self.total_games - self.games_done) / max(games_per_sec, 0.001)
@@ -86,18 +96,28 @@ class Dashboard:
         pct = self.games_done / max(self.total_games, 1)
         bar_len = 30
         filled = int(bar_len * pct)
-        bar = "\033[92m" + "█" * filled + "\033[90m" + "░" * (bar_len - filled) + "\033[0m"
+        bar = (
+            "\033[92m"
+            + "█" * filled
+            + "\033[90m"
+            + "░" * (bar_len - filled)
+            + "\033[0m"
+        )
 
         w_pct = self.white_wins / max(self.games_done, 1) * 100
         b_pct = self.black_wins / max(self.games_done, 1) * 100
         d_pct = self.draws / max(self.games_done, 1) * 100
 
-        # Strength indicator: as training progresses, games get longer (smarter play)
         strength_bar_len = 20
-        # Use average game length as a rough proxy (longer = smarter, up to ~100 moves)
         strength = min(avg_len / 100.0, 1.0)
         s_filled = int(strength_bar_len * strength)
-        s_bar = "\033[95m" + "█" * s_filled + "\033[90m" + "░" * (strength_bar_len - s_filled) + "\033[0m"
+        s_bar = (
+            "\033[95m"
+            + "█" * s_filled
+            + "\033[90m"
+            + "░" * (strength_bar_len - s_filled)
+            + "\033[0m"
+        )
 
         lines = [
             "",
@@ -120,8 +140,8 @@ class Dashboard:
             f"    Last 10 avg:   {avg_last10:6.1f} moves",
             "",
             f"  \033[1mTraining Loss:\033[0m",
-            f"    Last game:     {last_loss:8.4f}",
-            f"    Running avg:   {avg_loss:8.4f}",
+            f"    \033[97mWhite\033[0m  last: {last_w_loss:7.4f}   avg: {avg_w_loss:7.4f}",
+            f"    \033[90mBlack\033[0m  last: {last_b_loss:7.4f}   avg: {avg_b_loss:7.4f}",
             "",
             f"  \033[1mEst. Strength:\033[0m  {s_bar}  ({avg_len:.0f} avg moves)",
             "",
@@ -132,7 +152,6 @@ class Dashboard:
             "",
         ]
 
-        # Clear screen and draw
         sys.stdout.write("\033[2J\033[H")
         sys.stdout.write("\n".join(lines))
         sys.stdout.flush()
@@ -141,7 +160,8 @@ class Dashboard:
         elapsed = time.time() - self.start_time
         h, m, s = int(elapsed // 3600), int(elapsed % 3600 // 60), int(elapsed % 60)
         avg_len = sum(self.game_lengths) / max(len(self.game_lengths), 1)
-        avg_loss = sum(self.losses) / max(len(self.losses), 1)
+        avg_w_loss = sum(self.white_losses) / max(len(self.white_losses), 1)
+        avg_b_loss = sum(self.black_losses) / max(len(self.black_losses), 1)
 
         print("\n\033[1;33m  ══════════ Training Complete ══════════\033[0m\n")
         print(f"  Games played:   {self.games_done}")
@@ -150,14 +170,21 @@ class Dashboard:
         print(f"  Black wins:     {self.black_wins}")
         print(f"  Draws:          {self.draws}")
         print(f"  Avg game len:   {avg_len:.1f} moves")
-        print(f"  Avg loss:       {avg_loss:.4f}")
-        print(f"\n  Model saved to: {MODEL_PATH}\n")
+        print(f"  Avg loss white: {avg_w_loss:.4f}")
+        print(f"  Avg loss black: {avg_b_loss:.4f}")
+        print(f"\n  White model: {MODEL_WHITE_PATH}")
+        print(f"  Black model: {MODEL_BLACK_PATH}\n")
 
 
 # ── Self-play ────────────────────────────────────────────────────────────────
 
-def play_one_game(model, max_moves, temperature, dashboard):
-    """Play a single self-play game. Returns (positions, result, move_count)."""
+
+def play_one_game(model_white, model_black, max_moves, temperature, dashboard):
+    """
+    Play a single game with two separate models.
+    Returns (positions, result, move_count).
+    positions is a list of (tensor, move_index, turn_color).
+    """
     board = starting_board()
     turn = "white"
     last_move = None
@@ -165,7 +192,7 @@ def play_one_game(model, max_moves, temperature, dashboard):
         "white": {"kingside": True, "queenside": True},
         "black": {"kingside": True, "queenside": True},
     }
-    positions = []  # list of (tensor, move_index, turn_color)
+    positions = []
 
     for move_num in range(max_moves):
         dashboard.set_current(move_num + 1, turn)
@@ -179,12 +206,12 @@ def play_one_game(model, max_moves, temperature, dashboard):
                 result = 0.0
             return positions, result, move_num
 
+        model = model_white if turn == "white" else model_black
         tensor = board_to_tensor(board, turn, castling_rights, last_move)
 
         with torch.no_grad():
             policy_logits, _value = model(tensor)
 
-        # Build legal move mask
         mask = torch.full((4096,), float("-inf"))
         move_map = {}
         for fr, fc, tr, tc in moves:
@@ -224,11 +251,9 @@ def train_on_positions(model, optimizer, positions, result):
         inp = tensor.unsqueeze(0)
         policy_logits, value = model(inp)
 
-        # Value loss
         value_target = torch.tensor([[target_val]], dtype=torch.float32)
         value_loss = nn.MSELoss()(value, value_target)
 
-        # Policy loss weighted by outcome
         move_target = torch.tensor([move_idx], dtype=torch.long)
         policy_loss = nn.CrossEntropyLoss()(policy_logits, move_target)
 
@@ -244,43 +269,84 @@ def train_on_positions(model, optimizer, positions, result):
     return total_loss / len(positions)
 
 
-def load_or_create_model():
-    """Load existing model or create a new one."""
-    model = ChessResNet()
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
+def load_or_create_models():
+    """
+    Load existing white/black models or create new ones.
+    Falls back to the legacy single-model checkpoint if colour-specific files
+    don't exist yet.
+    Returns (model_white, optimizer_white, model_black, optimizer_black).
+    """
+    def _load(path, label):
+        model = ChessResNet()
+        optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
+        if os.path.exists(path):
+            ckpt = torch.load(path, map_location="cpu", weights_only=False)
+            model.load_state_dict(ckpt["model"])
+            optimizer.load_state_dict(ckpt["optimizer"])
+            print(f"  Loaded {label} model from {path}")
+        elif os.path.exists(_MODEL_LEGACY_PATH):
+            ckpt = torch.load(_MODEL_LEGACY_PATH, map_location="cpu", weights_only=False)
+            model.load_state_dict(ckpt["model"])
+            try:
+                optimizer.load_state_dict(ckpt["optimizer"])
+            except Exception:
+                pass
+            print(f"  Loaded {label} model from legacy {_MODEL_LEGACY_PATH}")
+        else:
+            print(f"  Starting {label} model from scratch")
+        model.eval()
+        return model, optimizer
 
-    if os.path.exists(MODEL_PATH):
-        checkpoint = torch.load(MODEL_PATH, map_location="cpu", weights_only=False)
-        model.load_state_dict(checkpoint["model"])
-        optimizer.load_state_dict(checkpoint["optimizer"])
-        print(f"  Loaded existing model from {MODEL_PATH}")
-    else:
-        print("  Starting with a fresh model")
-
-    model.eval()
-    return model, optimizer
+    model_white, opt_white = _load(MODEL_WHITE_PATH, "white")
+    model_black, opt_black = _load(MODEL_BLACK_PATH, "black")
+    return model_white, opt_white, model_black, opt_black
 
 
-def save_model(model, optimizer):
+def save_models(model_white, opt_white, model_black, opt_black):
     os.makedirs(MODEL_DIR, exist_ok=True)
     torch.save(
-        {"model": model.state_dict(), "optimizer": optimizer.state_dict()},
-        MODEL_PATH,
+        {"model": model_white.state_dict(), "optimizer": opt_white.state_dict()},
+        MODEL_WHITE_PATH,
+    )
+    torch.save(
+        {"model": model_black.state_dict(), "optimizer": opt_black.state_dict()},
+        MODEL_BLACK_PATH,
     )
 
 
 # ── Main ─────────────────────────────────────────────────────────────────────
 
+
 def main():
-    parser = argparse.ArgumentParser(description="Chess ML self-play training")
-    parser.add_argument("--games", type=int, default=1000, help="Number of games to play (default: 1000)")
-    parser.add_argument("--save-every", type=int, default=50, help="Save model every N games (default: 50)")
-    parser.add_argument("--max-moves", type=int, default=200, help="Max moves per game before draw (default: 200)")
-    parser.add_argument("--temperature", type=float, default=1.0, help="Sampling temperature (default: 1.0)")
+    parser = argparse.ArgumentParser(description="Chess ML self-play training (two models)")
+    parser.add_argument(
+        "--games",
+        type=int,
+        default=1000,
+        help="Number of games to play (default: 1000)",
+    )
+    parser.add_argument(
+        "--save-every",
+        type=int,
+        default=5,
+        help="Save models every N games (default: 5)",
+    )
+    parser.add_argument(
+        "--max-moves",
+        type=int,
+        default=250,
+        help="Max moves per game before draw (default: 250)",
+    )
+    parser.add_argument(
+        "--temperature",
+        type=float,
+        default=1.0,
+        help="Sampling temperature (default: 1.0)",
+    )
     args = parser.parse_args()
 
-    print("\n\033[1;33m  ♚  Chess ML Self-Play Training  ♚\033[0m\n")
-    model, optimizer = load_or_create_model()
+    print("\n\033[1;33m  ♚  Chess ML Self-Play Training (White vs Black)  ♚\033[0m\n")
+    model_white, opt_white, model_black, opt_black = load_or_create_models()
     print(f"  Games to play: {args.games}")
     print(f"  Save every:    {args.save_every} games")
     print(f"  Max moves:     {args.max_moves}")
@@ -292,18 +358,24 @@ def main():
 
     for game_num in range(args.games):
         positions, result, length = play_one_game(
-            model, args.max_moves, args.temperature, dashboard
+            model_white, model_black, args.max_moves, args.temperature, dashboard
         )
 
-        avg_loss = train_on_positions(model, optimizer, positions, result)
-        dashboard.update_game(result, length, avg_loss)
+        # Split positions by colour and train each model on its own positions
+        white_positions = [(t, m, c) for t, m, c in positions if c == "white"]
+        black_positions = [(t, m, c) for t, m, c in positions if c == "black"]
+
+        white_loss = train_on_positions(model_white, opt_white, white_positions, result)
+        black_loss = train_on_positions(model_black, opt_black, black_positions, result)
+
+        dashboard.update_game(result, length, white_loss, black_loss)
         dashboard.render()
 
         if (game_num + 1) % args.save_every == 0:
-            save_model(model, optimizer)
+            save_models(model_white, opt_white, model_black, opt_black)
 
     # Final save
-    save_model(model, optimizer)
+    save_models(model_white, opt_white, model_black, opt_black)
     dashboard.final_summary()
 
 
