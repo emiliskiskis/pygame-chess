@@ -218,5 +218,6 @@ __marimo__/
 *.dat
 
 # ML model weights
-models/*.pt
+models/
 saves/
+profiles.json
