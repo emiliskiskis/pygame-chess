@@ -1,7 +1,7 @@
 """
 ml_ai.py — ML-based AI move selection and online training.
 
-Manages two independent ChessResNet models (one per colour), providing:
+Manages a single global ChessResNet model, providing:
   - ml_ai_move()            : pick a move for black during human-vs-AI gameplay
   - ml_ai_move_for()        : pick a move for any colour (used by self-play);
                               does NOT self-record — do_move handles recording
@@ -25,20 +25,18 @@ from .ml_model import ChessResNet, board_to_tensor, move_to_index
 from ..profiles import get_model_path as _get_model_path
 
 # ── Global model state ─────────────────────────────────────────────────────────
-_model_white = None
-_optimizer_white = None
-_model_black = None
-_optimizer_black = None
+_model = None
+_optimizer = None
 
-# ── Persistent stats (loaded from / saved to black model checkpoint) ──────────
-# Stats track the black AI's performance in human-vs-AI (MODE_ML_AI) games.
+# ── Persistent stats (loaded from / saved to checkpoint) ──────────────────────
 _elo = 800
 _games_played = 0
-_wins = 0    # AI wins  (black wins)
+_wins = 0  # AI wins  (black wins)
 _losses = 0  # AI losses (white / human wins)
 _draws = 0
 
-# Last value-head estimate produced by the last ml_ai_move/ml_ai_move_for call.
+# Last value-head estimate produced by ml_ai_move(), from black's perspective.
+# Updated every AI move; read after game ends for the "confidence" stat.
 _last_value_estimate: float = 0.0
 
 # Positions collected during the current game:
@@ -49,89 +47,47 @@ _game_positions: list = []
 # ── Model lifecycle ────────────────────────────────────────────────────────────
 
 
-def _get_model_path_for(color: str):
-    """Return the checkpoint path for the given colour's model."""
-    base = _get_model_path()
-    return base.parent / f"model_{color}.pt"
-
-
-def _load_one_model(color: str):
-    """
-    Load or create the model + optimizer for one colour.
-    Falls back to the legacy single-model checkpoint (model.pt) if the
-    colour-specific file doesn't exist yet.
-    Returns (model, optimizer, extra_stats_dict).
-    extra_stats_dict is non-empty only for the black model (which carries ELO).
-    """
-    m = ChessResNet()
-    opt = torch.optim.Adam(m.parameters(), lr=1e-4)
-    stats = {}
-
-    colour_path = _get_model_path_for(color)
-    if colour_path.exists():
-        ckpt = torch.load(str(colour_path), map_location="cpu", weights_only=False)
-        m.load_state_dict(ckpt["model"])
-        opt.load_state_dict(ckpt["optimizer"])
-        stats = {k: ckpt[k] for k in ("elo", "games_played", "wins", "losses", "draws") if k in ckpt}
-    else:
-        # Backward compat: try the old single-model file
-        old_path = _get_model_path()
-        if old_path.exists():
-            ckpt = torch.load(str(old_path), map_location="cpu", weights_only=False)
-            m.load_state_dict(ckpt["model"])
-            try:
-                opt.load_state_dict(ckpt["optimizer"])
-            except Exception:
-                pass
-            stats = {k: ckpt[k] for k in ("elo", "games_played", "wins", "losses", "draws") if k in ckpt}
-
-    m.eval()
-    return m, opt, stats
-
-
-def _ensure_models():
-    """Load or create both models + optimizers, loading saved stats."""
-    global _model_white, _optimizer_white, _model_black, _optimizer_black
+def _ensure_model():
+    """Load or create the global model + optimizer, loading saved stats."""
+    global _model, _optimizer
     global _elo, _games_played, _wins, _losses, _draws
 
-    if _model_white is None:
-        _model_white, _optimizer_white, _ = _load_one_model("white")
+    if _model is not None:
+        return _model
 
-    if _model_black is None:
-        _model_black, _optimizer_black, stats = _load_one_model("black")
-        _elo = stats.get("elo", 800)
-        _games_played = stats.get("games_played", 0)
-        _wins = stats.get("wins", 0)
-        _losses = stats.get("losses", 0)
-        _draws = stats.get("draws", 0)
+    _model = ChessResNet()
+    _optimizer = torch.optim.Adam(_model.parameters(), lr=1e-4)
+
+    model_path = _get_model_path()
+    if model_path.exists():
+        checkpoint = torch.load(str(model_path), map_location="cpu", weights_only=False)
+        _model.load_state_dict(checkpoint["model"])
+        _optimizer.load_state_dict(checkpoint["optimizer"])
+        _elo = checkpoint.get("elo", 800)
+        _games_played = checkpoint.get("games_played", 0)
+        _wins = checkpoint.get("wins", 0)
+        _losses = checkpoint.get("losses", 0)
+        _draws = checkpoint.get("draws", 0)
+
+    _model.eval()
+    return _model
 
 
-def _save_models():
-    """Persist both models to disk."""
-    # White model
-    white_path = _get_model_path_for("white")
-    white_path.parent.mkdir(parents=True, exist_ok=True)
+def _save_model():
+    """Persist model weights, optimizer state, and stats to disk."""
+    model_path = _get_model_path()
+    model_path.parent.mkdir(parents=True, exist_ok=True)
     torch.save(
         {
-            "model": _model_white.state_dict(),
-            "optimizer": _optimizer_white.state_dict(),
-        },
-        str(white_path),
-    )
-
-    # Black model carries the ELO / game stats
-    black_path = _get_model_path_for("black")
-    torch.save(
-        {
-            "model": _model_black.state_dict(),
-            "optimizer": _optimizer_black.state_dict(),
+            "model": _model.state_dict(),
+            "optimizer": _optimizer.state_dict(),
             "elo": _elo,
             "games_played": _games_played,
             "wins": _wins,
             "losses": _losses,
             "draws": _draws,
         },
-        str(black_path),
+        str(model_path),
     )
 
 
@@ -140,15 +96,13 @@ def unload_model() -> None:
     Reset all in-memory model state.
 
     Call this when switching the active profile so that the next call to
-    _ensure_models() loads the new profile's checkpoints from disk.
+    _ensure_model() loads the new profile's checkpoint from disk.
     """
-    global _model_white, _optimizer_white, _model_black, _optimizer_black
+    global _model, _optimizer
     global _elo, _games_played, _wins, _losses, _draws
     global _last_value_estimate, _game_positions
-    _model_white = None
-    _optimizer_white = None
-    _model_black = None
-    _optimizer_black = None
+    _model = None
+    _optimizer = None
     _elo = 800
     _games_played = 0
     _wins = 0
@@ -167,7 +121,7 @@ def get_stats() -> dict:
     training thread is running (stats in memory are updated before the thread
     starts, so no lock is needed).
     """
-    _ensure_models()
+    _ensure_model()
     return {
         "elo": _elo,
         "games": _games_played,
@@ -189,7 +143,7 @@ def record_game_result(result: float) -> None:
     """
     global _games_played, _wins, _losses, _draws, _elo
 
-    _ensure_models()
+    _ensure_model()
 
     _games_played += 1
     if result < 0.0:  # AI (black) won
@@ -230,22 +184,26 @@ def clear_game_history():
 # ── Move selection ─────────────────────────────────────────────────────────────
 
 
-def _pick_move(model, board, color, last_move, castling_rights):
+def ml_ai_move(board, last_move, castling_rights, progress=None):
     """
-    Core move-picking logic shared by ml_ai_move and ml_ai_move_for.
-    Returns (chosen_idx, move_map, value_estimate).
+    Pick a move using the ML model.  Returns (fr, fc, tr, tc) or None.
+    Also updates _last_value_estimate with the model's confidence.
     """
-    moves = all_legal_moves(board, color, last_move, castling_rights)
-    if not moves:
-        return None, {}, 0.0
+    global _last_value_estimate
 
-    tensor = board_to_tensor(board, color, castling_rights, last_move)
+    model = _ensure_model()
+    moves = all_legal_moves(board, "black", last_move, castling_rights)
+    if not moves:
+        return None
+
+    tensor = board_to_tensor(board, "black", castling_rights, last_move)
 
     with torch.no_grad():
         policy_logits, value = model(tensor)
 
-    value_estimate = float(value.item())
+    _last_value_estimate = float(value.item())
 
+    # Mask illegal moves
     mask = torch.full((4096,), float("-inf"))
     move_map = {}
     for fr, fc, tr, tc in moves:
@@ -255,41 +213,23 @@ def _pick_move(model, board, color, last_move, castling_rights):
 
     masked = policy_logits.squeeze(0) + mask
     probs = torch.softmax(masked, dim=0)
+
     chosen_idx = int(torch.multinomial(probs, 1).item())
-
-    return chosen_idx, move_map, value_estimate
-
-
-def ml_ai_move(board, last_move, castling_rights, progress=None):
-    """
-    Pick a move for black using the black model.  Returns (fr, fc, tr, tc) or None.
-    Also updates _last_value_estimate with the model's confidence.
-    """
-    global _last_value_estimate
-
-    _ensure_models()
-    chosen_idx, move_map, value_estimate = _pick_move(
-        _model_black, board, "black", last_move, castling_rights
-    )
-    if chosen_idx is None:
-        return None
-
-    _last_value_estimate = value_estimate
+    chosen_move = move_map[chosen_idx]
 
     # Record this position for training
-    tensor = board_to_tensor(board, "black", castling_rights, last_move)
     _game_positions.append((tensor.squeeze(0), chosen_idx, "black"))
 
     if progress is not None:
         progress[0] = 1
         progress[1] = 1
 
-    return move_map[chosen_idx]
+    return chosen_move
 
 
 def ml_ai_move_for(board, color, last_move, castling_rights, progress=None):
     """
-    Pick a move for *any* colour using that colour's dedicated model.
+    Pick a move for *any* colour using the ML model.
 
     Unlike ml_ai_move(), this function does NOT append to _game_positions.
     Position recording is handled entirely by do_move() so that self-play
@@ -302,15 +242,30 @@ def ml_ai_move_for(board, color, last_move, castling_rights, progress=None):
     """
     global _last_value_estimate
 
-    _ensure_models()
-    model = _model_white if color == "white" else _model_black
-    chosen_idx, move_map, value_estimate = _pick_move(
-        model, board, color, last_move, castling_rights
-    )
-    if chosen_idx is None:
+    model = _ensure_model()
+    moves = all_legal_moves(board, color, last_move, castling_rights)
+    if not moves:
         return None
 
-    _last_value_estimate = value_estimate
+    tensor = board_to_tensor(board, color, castling_rights, last_move)
+
+    with torch.no_grad():
+        policy_logits, value = model(tensor)
+
+    _last_value_estimate = float(value.item())
+
+    # Mask illegal moves
+    mask = torch.full((4096,), float("-inf"))
+    move_map = {}
+    for fr, fc, tr, tc in moves:
+        idx = move_to_index(fr, fc, tr, tc)
+        mask[idx] = 0.0
+        move_map[idx] = (fr, fc, tr, tc)
+
+    masked = policy_logits.squeeze(0) + mask
+    probs = torch.softmax(masked, dim=0)
+
+    chosen_idx = int(torch.multinomial(probs, 1).item())
 
     if progress is not None:
         progress[0] = 1
@@ -322,18 +277,33 @@ def ml_ai_move_for(board, color, last_move, castling_rights, progress=None):
 # ── Training ───────────────────────────────────────────────────────────────────
 
 
-def _train_one_model(model, optimizer, positions, result, color, progress, offset):
+def _train_on_positions(positions: list, result: float, progress: list) -> None:
     """
-    Run one REINFORCE-style gradient step per position for a single model.
-    `color` determines the sign of the target value.
-    `offset` is added to progress[0] so both models share one progress counter.
+    Run one REINFORCE-style gradient step per recorded position.
+    Designed to be called from a background thread.
+
+    progress: a two-element list [steps_done, total_steps] updated in place
+              after each step so the main thread can read it without a lock
+              (integer writes are atomic on CPython).
     """
-    model.train()
-    for i, (tensor, move_idx, _) in enumerate(positions):
-        target_val = result if color == "white" else -result
+    if not positions or _model is None:
+        if progress is not None:
+            progress[0] = progress[1]
+        return
+
+    total = len(positions)
+    if progress is not None:
+        progress[0] = 0
+        progress[1] = total
+
+    _model.train()
+
+    for i, (tensor, move_idx, turn_color) in enumerate(positions):
+        # Target value from this player's perspective
+        target_val = result if turn_color == "white" else -result
 
         inp = tensor.unsqueeze(0)
-        policy_logits, value = model(inp)
+        policy_logits, value = _model(inp)
 
         value_target = torch.tensor([[target_val]], dtype=torch.float32)
         value_loss = nn.MSELoss()(value, value_target)
@@ -341,48 +311,27 @@ def _train_one_model(model, optimizer, positions, result, color, progress, offse
         move_target = torch.tensor([move_idx], dtype=torch.long)
         policy_loss = nn.CrossEntropyLoss()(policy_logits, move_target)
 
-        weight = max(target_val, 0.1)
+        # Weight policy gradient by outcome; always learn a little (0.1 floor)
+        sign = target_val
+        weight = max(sign, 0.1)
         loss = value_loss + policy_loss * weight
 
-        optimizer.zero_grad()
+        _optimizer.zero_grad()
         loss.backward()
-        optimizer.step()
+        _optimizer.step()
 
         if progress is not None:
-            progress[0] = offset + i + 1
+            progress[0] = i + 1
 
-    model.eval()
-
-
-def _train_both_models(white_positions, black_positions, result, progress):
-    """
-    Train white and black models on their respective positions.
-    Designed to be called from a background thread.
-    """
-    if _model_white is None or _model_black is None:
-        if progress is not None:
-            progress[0] = progress[1]
-        return
-
-    _train_one_model(
-        _model_white, _optimizer_white,
-        white_positions, result, "white",
-        progress, offset=0,
-    )
-    _train_one_model(
-        _model_black, _optimizer_black,
-        black_positions, result, "black",
-        progress, offset=len(white_positions),
-    )
-
-    _save_models()
+    _model.eval()
+    # Save model (including already-updated ELO/stats from record_game_result)
+    _save_model()
 
 
 def start_training_async(result: float, progress: list) -> threading.Thread:
     """
-    Snapshot the current game positions, split them by colour, initialise the
-    progress counters, and spawn a daemon thread that trains both models and
-    saves them when done.
+    Snapshot the current game positions, initialise the progress counters, and
+    spawn a daemon thread that trains the model and saves it when done.
 
     Call record_game_result() *before* this so that ELO is already updated in
     memory before the thread starts writing to the checkpoint.
@@ -391,11 +340,10 @@ def start_training_async(result: float, progress: list) -> threading.Thread:
     """
     global _game_positions
 
+    # Take a snapshot and clear immediately so a new game can start recording
+    # positions without interfering with the training run.
     positions = list(_game_positions)
     _game_positions = []
-
-    white_positions = [(t, m, c) for t, m, c in positions if c == "white"]
-    black_positions = [(t, m, c) for t, m, c in positions if c == "black"]
 
     total = max(1, len(positions))
     if progress is not None:
@@ -403,8 +351,8 @@ def start_training_async(result: float, progress: list) -> threading.Thread:
         progress[1] = total
 
     thread = threading.Thread(
-        target=_train_both_models,
-        args=(white_positions, black_positions, result, progress),
+        target=_train_on_positions,
+        args=(positions, result, progress),
         daemon=True,
     )
     thread.start()

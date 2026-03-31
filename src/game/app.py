@@ -235,13 +235,6 @@ class GameApp:
         chess.status_msg, chess.game_over = post_move_status(
             chess.board, chess.turn, chess.last_move, chess.castling_rights, self.mode
         )
-        if (
-            not chess.game_over
-            and self.mode == MODE_ML_SELF
-            and len(chess.move_history) >= 250
-        ):
-            chess.status_msg = S.STATUS_STALEMATE
-            chess.game_over = True
         if chess.game_over and self.mode in (MODE_ML_AI, MODE_ML_SELF):
             if S.STATUS_CHECKMATE.split("{")[0] in chess.status_msg:
                 winner = opponent(chess.turn)
