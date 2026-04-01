@@ -5,6 +5,7 @@ requires-python = ">= 3.12"
 dependencies = [
     "cairosvg>=2.9.0",
     "pygame>=2.6.1",
+    "tensorboard>=2.20.0",
     "torch>=2.11.0",
     "torchvision>=0.26.0",
 ]
