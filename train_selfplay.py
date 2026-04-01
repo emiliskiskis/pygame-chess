@@ -258,10 +258,20 @@ def train_on_batch(model, optimizer, replay_buffer, batch_size):
 
     value_loss = nn.MSELoss()(values, target_vals)
 
-    winner_mask = target_vals.squeeze(1) > 0  # (B,)
+    # Policy loss: full weight on winning positions, reduced weight on draws,
+    # zero on losing positions (don't reinforce bad moves).
+    tv = target_vals.squeeze(1)
+    winner_mask = tv > 0
+    draw_mask = tv == 0
+    policy_terms = []
     if winner_mask.any():
-        log_probs = torch.log_softmax(policy_logits[winner_mask], dim=1)
-        policy_loss = -(policy_targets[winner_mask] * log_probs).sum(dim=1).mean()
+        lp = torch.log_softmax(policy_logits[winner_mask], dim=1)
+        policy_terms.append(-(policy_targets[winner_mask] * lp).sum(dim=1).mean())
+    if draw_mask.any():
+        lp = torch.log_softmax(policy_logits[draw_mask], dim=1)
+        policy_terms.append(0.3 * -(policy_targets[draw_mask] * lp).sum(dim=1).mean())
+    if policy_terms:
+        policy_loss = sum(policy_terms) / len(policy_terms)
         total_loss = value_loss + policy_loss
     else:
         policy_loss = torch.tensor(0.0, device=DEVICE)
