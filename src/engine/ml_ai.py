@@ -116,6 +116,11 @@ def unload_model() -> None:
 # ── Public stats API ───────────────────────────────────────────────────────────
 
 
+def get_model_path_str() -> str:
+    """Return the absolute path of the current profile's model file as a string."""
+    return str(_get_model_path())
+
+
 def get_stats() -> dict:
     """
     Return current AI stats.  Safe to call at any time, including while a

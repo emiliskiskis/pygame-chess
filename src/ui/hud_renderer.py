@@ -80,6 +80,20 @@ def draw_notation_bar(screen, fonts, bar_text, bar_error, L):
     screen.blit(hint, hint.get_rect(midright=(bx + bw - pad, by + bh // 2)))
 
 
+def draw_model_path(screen, fonts, path, L):
+    """Show the model file path in the notation-bar slot (used in ML vs ML mode)."""
+    f = fonts["bar"]
+    bx, by = L.bar_x, L.bar_y
+    bw, bh = L.bar_w, L.bar_h
+    pad = max(4, bh // 5)
+
+    pygame.draw.rect(screen, (20, 20, 20), (bx, by, bw, bh), border_radius=4)
+    pygame.draw.rect(screen, (55, 55, 70), (bx, by, bw, bh), 1, border_radius=4)
+
+    path_s = f.render(path, True, (90, 90, 105))
+    screen.blit(path_s, path_s.get_rect(midleft=(bx + pad, by + bh // 2)))
+
+
 def draw_move_panel(screen, fonts, move_history, L):
     panel_rect = pygame.Rect(L.board_w, 0, L.panel_w, L.window_h)
     header_rect = pygame.Rect(L.board_w, 0, L.panel_w, L.border_top)

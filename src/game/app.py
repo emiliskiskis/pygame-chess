@@ -34,6 +34,7 @@ from ..engine.board import (
 )
 from ..engine.ml_ai import (
     clear_game_history,
+    get_model_path_str,
     get_stats,
     ml_ai_mcts_move_for,
     ml_ai_move,
@@ -65,6 +66,7 @@ from ..ui.board_renderer import (
 )
 from ..ui.hud_renderer import (
     draw_ai_progress,
+    draw_model_path,
     draw_move_panel,
     draw_notation_bar,
     draw_self_play_speed,
@@ -1135,6 +1137,8 @@ class GameApp:
 
         if chess and self.mode == MODE_LEARNING and chess.tip_text:
             draw_tip(self.screen, self.fonts, chess.tip_text, self.L)
+        elif self.mode == MODE_ML_SELF:
+            draw_model_path(self.screen, self.fonts, get_model_path_str(), self.L)
         else:
             draw_notation_bar(self.screen, self.fonts, self.bar_text, self.bar_error, self.L)
 
@@ -1155,7 +1159,10 @@ class GameApp:
                     strings.CURRENT_LOCALE, self.lang_open, self.lang_hovered, self.L,
                 )
             else:
-                draw_selfplay_training_screen(self.screen, self.fonts, self.sp, self.L)
+                draw_selfplay_training_screen(
+                    self.screen, self.fonts, self.sp, self.L,
+                    model_path=get_model_path_str(),
+                )
         elif chess and chess.game_over:
             ml_data = None
             if self.mode in (MODE_ML_AI, MODE_ML_SELF):

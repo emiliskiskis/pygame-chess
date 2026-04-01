@@ -402,7 +402,7 @@ def draw_gameover_overlay(
 # ── Self-play training screen ────────────────────────────────────────────────────
 
 
-def draw_selfplay_training_screen(screen, fonts, sp, L):
+def draw_selfplay_training_screen(screen, fonts, sp, L, model_path=None):
     """Full-screen overlay shown between self-play games while a training batch runs.
 
     Displays per-game stats and a live progress bar.  When training is done the
@@ -422,8 +422,9 @@ def draw_selfplay_training_screen(screen, fonts, sp, L):
     sub_fh = fonts["sub"].get_height()
 
     num_stat_rows = 4  # game #, loss row, W/D/B row, avg length row
+    path_rows = 1 if model_path else 0
     total_h = (
-        title_fh + sec
+        title_fh + (sec // 2 if model_path else 0) + path_rows * (sub_fh + 2) + sec
         + num_stat_rows * (stat_fh + 4) + sec
         + sub_fh + 4 + bar_h
     )
@@ -432,7 +433,13 @@ def draw_selfplay_training_screen(screen, fonts, sp, L):
     # ── Title ─────────────────────────────────────────────────────────────────
     title_s = fonts["over"].render("\u265b  Self-Play Training  \u265b", True, (255, 220, 50))
     screen.blit(title_s, title_s.get_rect(centerx=cx, top=y))
-    y += title_fh + sec
+    y += title_fh + (sec // 2 if model_path else sec)
+
+    # ── Model path ────────────────────────────────────────────────────────────
+    if model_path:
+        path_s = fonts["sub"].render(model_path, True, (90, 90, 100))
+        screen.blit(path_s, path_s.get_rect(centerx=cx, top=y))
+        y += sub_fh + 2 + sec
 
     stat_col = (190, 190, 205)
     sep = "   \u00b7   "
