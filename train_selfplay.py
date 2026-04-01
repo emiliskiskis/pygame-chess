@@ -12,7 +12,6 @@ View training progress:
 """
 
 import argparse
-import copy
 import os
 import random
 import sys
@@ -38,7 +37,8 @@ from src.engine.board import (
     opponent,
     starting_board,
 )
-from src.engine.ml_model import ChessResNet, board_to_tensor, move_to_index
+from src.engine.mcts import MCTSNode, mcts_search
+from src.engine.ml_model import ChessResNet
 
 MODEL_DIR = os.path.join(os.path.dirname(__file__), "models")
 MODEL_PATH = os.path.join(MODEL_DIR, "model.pt")
@@ -54,11 +54,11 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 class Dashboard:
     """Logs training metrics to TensorBoard; prints a minimal status line."""
 
-    def __init__(self, total_games, num_simulations, log_dir):
+    def __init__(self, total_games, num_simulations, log_dir, games_completed=0):
         self.total_games = total_games
         self.num_simulations = num_simulations
         self.start_time = time.time()
-        self.games_done = 0
+        self.games_done = games_completed  # offset so step numbers continue from checkpoint
         self.white_wins = 0
         self.black_wins = 0
         self.draws = 0
@@ -129,8 +129,8 @@ class Dashboard:
             flush=True,
         )
 
-    def set_current(self, move_num, turn, sim=None):
-        """Overwrite the current terminal line with live MCTS progress."""
+    def set_current(self, move_num, turn):
+        """Overwrite the current terminal line with live move progress."""
         if self.avg_spg > 0:
             eta_secs = (self.total_games - self.games_done) * self.avg_spg
             eta_h = int(eta_secs // 3600)
@@ -167,122 +167,6 @@ class Dashboard:
         print(f"\n  Model saved to: {MODEL_PATH}")
 
 
-# ── MCTS ─────────────────────────────────────────────────────────────────────
-
-
-class MCTSNode:
-    """A node in the MCTS tree.
-
-    W is accumulated from THIS node's player's perspective (the player to move
-    here).  High W = good for the player to move at this node.  Because turns
-    alternate, the parent uses -child.Q when selecting among children (child's
-    good is parent's bad).
-    """
-
-    __slots__ = ["N", "W", "P", "children"]
-
-    def __init__(self, prior=0.0):
-        self.N = 0
-        self.W = 0.0
-        self.P = prior
-        self.children = {}  # move_idx -> (MCTSNode, (fr, fc, tr, tc))
-
-    @property
-    def Q(self):
-        return self.W / self.N if self.N > 0 else 0.0
-
-
-def _expand_node(node, policy_logits, moves):
-    """Populate node.children with prior probabilities from the policy network."""
-    mask = torch.full((4096,), float("-inf"))
-    for fr, fc, tr, tc in moves:
-        mask[move_to_index(fr, fc, tr, tc)] = 0.0
-    probs = torch.softmax(policy_logits.squeeze(0) + mask, dim=0)
-    for fr, fc, tr, tc in moves:
-        idx = move_to_index(fr, fc, tr, tc)
-        node.children[idx] = (MCTSNode(prior=probs[idx].item()), (fr, fc, tr, tc))
-
-
-def mcts_search(
-    model,
-    board,
-    turn,
-    last_move,
-    castling_rights,
-    num_simulations,
-    c_puct,
-    dashboard,
-    move_num,
-):
-    """Run MCTS from the current position.
-
-    Each simulation:
-      1. Selection  — follow PUCT until an unvisited leaf
-      2. Expansion  — evaluate leaf with network, populate children with priors
-      3. Backup     — propagate value up the path, alternating sign each level
-
-    Returns the root MCTSNode (children carry visit counts used as policy targets).
-    """
-    root = MCTSNode(prior=1.0)
-
-    for sim in range(num_simulations):
-        dashboard.set_current(move_num, turn, sim + 1)
-
-        node = root
-        path = []  # ancestors on this simulation's path
-
-        # Deep-copy the live game state; moves are executed in-place as we descend
-        sim_board = copy.deepcopy(board)
-        sim_turn = turn
-        sim_last = last_move
-        sim_castling = copy.deepcopy(castling_rights)
-
-        # ── Selection ────────────────────────────────────────────────────────
-        # Descend while the current node has been visited AND has children.
-        while node.N > 0 and node.children:
-            total_N = node.N
-            best_score = -float("inf")
-            best_idx = None
-            for idx, (child, _) in node.children.items():
-                # PUCT: -child.Q because child's perspective is opposite to ours
-                score = -child.Q + c_puct * child.P * (total_N**0.5) / (1 + child.N)
-                if score > best_score:
-                    best_score = score
-                    best_idx = idx
-
-            child_node, move = node.children[best_idx]
-            path.append(node)
-            fr, fc, tr, tc = move
-            sim_last, sim_castling, _ = execute_move(
-                sim_board, (fr, fc), (tr, tc), sim_last, sim_castling, sim_turn
-            )
-            sim_turn = opponent(sim_turn)
-            node = child_node
-
-        # ── Expansion + Evaluation ───────────────────────────────────────────
-        moves = all_legal_moves(sim_board, sim_turn, sim_last, sim_castling)
-
-        if not moves:
-            value = -1.0 if is_in_check(sim_board, sim_turn) else 0.0
-        else:
-            tensor = board_to_tensor(sim_board, sim_turn, sim_castling, sim_last).to(DEVICE)
-            with torch.no_grad():
-                policy_logits, v = model(tensor)
-            value = v.item()
-            _expand_node(node, policy_logits, moves)
-
-        # ── Backup ───────────────────────────────────────────────────────────
-        # value is from sim_turn's perspective; negate once for each level up.
-        node.W += value
-        node.N += 1
-        for ancestor in reversed(path):
-            value = -value
-            ancestor.W += value
-            ancestor.N += 1
-
-    return root
-
-
 # ── Self-play ────────────────────────────────────────────────────────────────
 
 
@@ -313,38 +197,24 @@ def play_one_game(model, max_moves, temperature, num_simulations, c_puct, dashbo
                 result = 0.0
             return positions, result, move_num
 
-        # Run MCTS to get a search-improved policy
-        root = mcts_search(
+        dashboard.set_current(move_num + 1, turn)
+
+        policy_dict, chosen_move, board_tensor = mcts_search(
             model,
             board,
             turn,
             last_move,
             castling_rights,
             num_simulations,
-            c_puct,
-            dashboard,
-            move_num + 1,
+            c_puct=c_puct,
+            device=DEVICE,
+            temperature=temperature,
         )
 
-        # Build sparse policy target from visit counts (only ~30 non-zero entries)
-        total_visits = sum(child.N for child, _ in root.children.values())
-        policy_dict = {
-            idx: child.N / total_visits
-            for idx, (child, _) in root.children.items()
-            if child.N > 0
-        }
+        if chosen_move is None:
+            return positions, 0.0, move_num
 
-        # Choose the move proportional to visit counts (temperature controls exploration)
-        visit_counts = torch.zeros(4096)
-        for idx, (child, _) in root.children.items():
-            visit_counts[idx] = child.N
-        visit_powered = visit_counts ** (1.0 / max(temperature, 1e-3))
-        probs = visit_powered / visit_powered.sum()
-        chosen_idx = torch.multinomial(probs, 1).item()
-        chosen_move = root.children[chosen_idx][1]
-
-        tensor = board_to_tensor(board, turn, castling_rights, last_move)
-        positions.append((tensor.squeeze(0), policy_dict, turn))
+        positions.append((board_tensor, policy_dict, turn))
 
         fr, fc, tr, tc = chosen_move
         last_move, castling_rights, _note = execute_move(
@@ -408,24 +278,32 @@ def train_on_batch(model, optimizer, replay_buffer, batch_size):
 def load_or_create_model():
     model = ChessResNet()
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-4, weight_decay=1e-4)
+    games_completed = 0
 
     if os.path.exists(MODEL_PATH):
         checkpoint = torch.load(MODEL_PATH, map_location="cpu", weights_only=False)
         model.load_state_dict(checkpoint["model"])
         optimizer.load_state_dict(checkpoint["optimizer"])
+        games_completed = checkpoint.get("games_completed", 0)
         print(f"  Loaded existing model from {MODEL_PATH}")
+        if games_completed:
+            print(f"  Resuming from game {games_completed}")
     else:
         print("  Starting with a fresh model")
 
     model.to(DEVICE)
     model.eval()
-    return model, optimizer
+    return model, optimizer, games_completed
 
 
-def save_model(model, optimizer):
+def save_model(model, optimizer, games_completed):
     os.makedirs(MODEL_DIR, exist_ok=True)
     torch.save(
-        {"model": model.state_dict(), "optimizer": optimizer.state_dict()},
+        {
+            "model": model.state_dict(),
+            "optimizer": optimizer.state_dict(),
+            "games_completed": games_completed,
+        },
         MODEL_PATH,
     )
 
@@ -493,7 +371,7 @@ def main():
     log_dir = args.log_dir or os.path.join("runs", run_name)
 
     print("\n\033[1;33m  ♚  Chess ML Self-Play Training  ♚\033[0m\n")
-    model, optimizer = load_or_create_model()
+    model, optimizer, games_completed = load_or_create_model()
     print(f"  Device:      {DEVICE}{' (' + torch.cuda.get_device_name(0) + ')' if DEVICE.type == 'cuda' else ''}")
     print(f"  Games:       {args.games}")
     print(f"  Simulations: {args.simulations} per move  (MCTS)")
@@ -504,11 +382,17 @@ def main():
     print(f"  c_puct:      {args.c_puct}")
     print()
 
-    replay_buffer = deque(maxlen=args.buffer_size)
-    dashboard = Dashboard(args.games, args.simulations, log_dir)
+    if games_completed >= args.games:
+        print(f"  Already completed {games_completed}/{args.games} games. Nothing to do.")
+        print(f"  Pass a larger --games value to continue training.\n")
+        return
 
+    replay_buffer = deque(maxlen=args.buffer_size)
+    dashboard = Dashboard(args.games, args.simulations, log_dir, games_completed)
+
+    interrupted = False
     try:
-        for game_num in range(args.games):
+        for game_num in range(games_completed, args.games):
             positions, result, length = play_one_game(
                 model,
                 args.max_moves,
@@ -529,13 +413,21 @@ def main():
             )
 
             if (game_num + 1) % args.save_every == 0:
-                save_model(model, optimizer)
+                save_model(model, optimizer, game_num + 1)
 
-        save_model(model, optimizer)
+    except KeyboardInterrupt:
+        interrupted = True
+        print("\n\n  Interrupted — saving model...")
+        save_model(model, optimizer, dashboard.games_done)
+        print(f"  Saved at game {dashboard.games_done}/{args.games}.")
+        print(f"  Resume with: python train_selfplay.py --games {args.games}\n")
+    else:
+        save_model(model, optimizer, args.games)
     finally:
         dashboard.close()
 
-    dashboard.final_summary()
+    if not interrupted:
+        dashboard.final_summary()
 
 
 if __name__ == "__main__":

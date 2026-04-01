@@ -35,10 +35,12 @@ from ..engine.board import (
 from ..engine.ml_ai import (
     clear_game_history,
     get_stats,
+    ml_ai_mcts_move_for,
     ml_ai_move,
     ml_ai_move_for,
     record_game_result,
     record_position,
+    start_selfplay_batch_training_async,
     start_training_async,
     unload_model,
 )
@@ -79,6 +81,7 @@ from ..ui.menu_renderer import (
     draw_menu,
     draw_pause_menu,
     draw_profiles_screen,
+    draw_selfplay_training_screen,
     make_fonts,
 )
 from .state import (
@@ -87,6 +90,7 @@ from .state import (
     DragState,
     ProfilesDialogState,
     SavePopupState,
+    SelfPlayState,
     TrainingState,
 )
 
@@ -168,9 +172,10 @@ class GameApp:
         self.training = TrainingState()
         self.save_popup = SavePopupState()
         self.dialog = ProfilesDialogState()
+        self.sp: SelfPlayState | None = None  # ML vs ML MCTS self-play state
 
-        # Self-play speed control
-        self.self_play_delay_ms = 500
+        # Self-play speed control (legacy non-MCTS path; no longer shown)
+        self.self_play_delay_ms = 0
         self.last_move_time = 0
 
     # ── Game state helpers ───────────────────────────────────────────────────────
@@ -196,6 +201,14 @@ class GameApp:
         self.pause_hovered = None
         self.pause_rects = {}
         self.last_move_time = 0
+        if new_mode == MODE_ML_SELF:
+            if self.sp is None:
+                # Fresh entry into this mode (e.g. from main menu)
+                self.sp = SelfPlayState()
+            else:
+                # Restart within the mode: preserve replay buffer and stats
+                self.sp.current_positions = []
+                self.sp.mcts_result = [None, None, None]
 
     def _apply_new_size(self, w, h):
         self.L = Layout(w, h)
@@ -215,12 +228,16 @@ class GameApp:
             )
         self._apply_new_size(*self.screen.get_size())
 
-    def _do_move(self, from_sq, to_sq):
+    def _do_move(self, from_sq, to_sq, mcts_policy_dict=None, mcts_tensor=None):
         chess = self.chess
-        if self.mode in (MODE_ML_AI, MODE_ML_SELF):
+        if self.mode == MODE_ML_AI:
             record_position(
                 chess.board, chess.turn, chess.castling_rights,
                 chess.last_move, from_sq, to_sq,
+            )
+        elif self.mode == MODE_ML_SELF and mcts_policy_dict is not None and mcts_tensor is not None:
+            self.sp.current_positions.append(
+                (mcts_tensor, mcts_policy_dict, chess.turn)
             )
         chess.last_move, chess.castling_rights, notation = execute_move(
             chess.board, from_sq, to_sq, chess.last_move, chess.castling_rights, chess.turn
@@ -235,20 +252,40 @@ class GameApp:
         chess.status_msg, chess.game_over = post_move_status(
             chess.board, chess.turn, chess.last_move, chess.castling_rights, self.mode
         )
-        if chess.game_over and self.mode in (MODE_ML_AI, MODE_ML_SELF):
-            if S.STATUS_CHECKMATE.split("{")[0] in chess.status_msg:
-                winner = opponent(chess.turn)
-                ml_result = 1.0 if winner == "white" else -1.0
-            else:
-                ml_result = 0.0
+        if chess.game_over:
+            if self.mode in (MODE_ML_AI, MODE_ML_SELF):
+                if S.STATUS_CHECKMATE.split("{")[0] in chess.status_msg:
+                    winner = opponent(chess.turn)
+                    ml_result = 1.0 if winner == "white" else -1.0
+                else:
+                    ml_result = 0.0
             if self.mode == MODE_ML_AI:
                 record_game_result(ml_result)
-            self.training.active = True
-            self.training.thread = start_training_async(
-                ml_result, self.training.progress
-            )
-        if self.mode == MODE_ML_SELF:
-            self.last_move_time = pygame.time.get_ticks()
+                self.training.active = True
+                self.training.thread = start_training_async(
+                    ml_result, self.training.progress
+                )
+            elif self.mode == MODE_ML_SELF and self.sp is not None:
+                # Flush current game positions into replay buffer
+                for tensor, pd, turn_color in self.sp.current_positions:
+                    self.sp.replay_buffer.append((tensor, pd, turn_color, ml_result))
+                self.sp.current_positions = []
+                # Update cumulative stats
+                self.sp.games_done += 1
+                if ml_result > 0:
+                    self.sp.white_wins += 1
+                elif ml_result < 0:
+                    self.sp.black_wins += 1
+                else:
+                    self.sp.draws += 1
+                self.sp.game_lengths.append(len(chess.move_history))
+                # Start batch training in background
+                self.sp.loss_result = [0.0, 0.0, 0.0]
+                self.sp.progress = [0, 0]
+                self.sp.training_active = True
+                self.sp.training_thread = start_selfplay_batch_training_async(
+                    self.sp.replay_buffer, 256, self.sp.progress, self.sp.loss_result
+                )
 
     def _save_current_game(self):
         if (
@@ -292,27 +329,32 @@ class GameApp:
     def _update_ai(self, now):
         chess = self.chess
 
-        # ML self-play: trigger move for whichever side is to move
+        # ML self-play (MCTS): trigger search for whichever side is to move
         if (
             self.mode == MODE_ML_SELF
             and chess
             and not chess.game_over
             and not self.ai.thinking
             and not self.paused
-            and now - self.last_move_time >= self.self_play_delay_ms
+            and self.sp is not None
+            and not self.sp.training_active
         ):
-            self.ai.result[0] = None
+            self.sp.mcts_result = [None, None, None]
             _board = chess.board
             _lm = chess.last_move
             _cr = chess.castling_rights
             _turn = chess.turn
-            _result = self.ai.result
-            _progress = self.ai.progress
+            _mcts_result = self.sp.mcts_result
 
-            def _run_self_play():
-                _result[0] = ml_ai_move_for(_board, _turn, _lm, _cr, _progress)
+            def _run_mcts():
+                policy_dict, move, board_tensor = ml_ai_mcts_move_for(
+                    _board, _turn, _lm, _cr
+                )
+                _mcts_result[0] = policy_dict
+                _mcts_result[1] = move
+                _mcts_result[2] = board_tensor
 
-            self.ai.thread = threading.Thread(target=_run_self_play, daemon=True)
+            self.ai.thread = threading.Thread(target=_run_mcts, daemon=True)
             self.ai.thread.start()
             self.ai.thinking = True
 
@@ -366,15 +408,41 @@ class GameApp:
             self.ai.thread.start()
             self.ai.thinking = True
 
-        # Collect AI result when thread finishes
+        # Collect AI / MCTS result when thread finishes
         if self.ai.thinking and self.ai.thread is not None and not self.ai.thread.is_alive():
             self.ai.thinking = False
             self.ai.thread = None
-            move = self.ai.result[0]
-            if move:
-                self._do_move((move[0], move[1]), (move[2], move[3]))
+            if self.mode == MODE_ML_SELF and self.sp is not None:
+                policy_dict = self.sp.mcts_result[0]
+                move = self.sp.mcts_result[1]
+                board_tensor = self.sp.mcts_result[2]
+                if move is not None:
+                    self._do_move(
+                        (move[0], move[1]), (move[2], move[3]),
+                        mcts_policy_dict=policy_dict,
+                        mcts_tensor=board_tensor,
+                    )
+            else:
+                move = self.ai.result[0]
+                if move:
+                    self._do_move((move[0], move[1]), (move[2], move[3]))
 
-        # Collect training result when thread finishes
+        # Collect self-play training result when thread finishes
+        if (
+            self.mode == MODE_ML_SELF
+            and self.sp is not None
+            and self.sp.training_active
+            and self.sp.training_thread is not None
+            and not self.sp.training_thread.is_alive()
+        ):
+            self.sp.training_active = False
+            self.sp.training_thread = None
+            # Record the loss from this completed training run
+            self.sp.losses.append(self.sp.loss_result[0])
+            # Auto-restart the next game
+            self._new_game(MODE_ML_SELF)
+
+        # Collect ML_AI training result when thread finishes
         if (
             self.training.active
             and self.training.thread is not None
@@ -415,6 +483,20 @@ class GameApp:
             return
 
         chess = self.chess
+
+        # During self-play training screen: only ESC (to pause) passes through
+        if (
+            self.mode == MODE_ML_SELF
+            and self.sp is not None
+            and self.sp.training_active
+        ):
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                self.paused = True
+                self.pause_hovered = None
+                self.lang_open = False
+                self.lang_hovered = None
+            return
+
         if self.paused and chess and not chess.game_over:
             self._handle_pause_event(event, mx, my)
             return
@@ -687,6 +769,9 @@ class GameApp:
                             popup.hovered = None
                             popup.rects = {}
                         else:
+                            # Reset self-play state on fresh mode entry from menu
+                            if m == MODE_ML_SELF:
+                                self.sp = None
                             self.mode = m
                             self._new_game(m)
                         break
@@ -1037,7 +1122,7 @@ class GameApp:
         if self.mode in (MODE_AI, MODE_ML_AI) and self.ai.thinking:
             draw_ai_progress(self.screen, self.ai.progress, self.L)
 
-        if self.mode == MODE_ML_SELF:
+        if self.mode == MODE_ML_SELF and self.sp is None:
             draw_self_play_speed(self.screen, self.fonts, self.self_play_delay_ms, self.L)
 
         if chess and self.mode == MODE_LEARNING and chess.tip_text:
@@ -1047,7 +1132,23 @@ class GameApp:
 
         draw_move_panel(self.screen, self.fonts, chess.move_history if chess else [], self.L)
 
-        if chess and chess.game_over:
+        if (
+            self.mode == MODE_ML_SELF
+            and self.sp is not None
+            and self.sp.training_active
+        ):
+            # Show training stats screen; auto-restarts when thread completes
+            if self.paused:
+                self.pause_rects = draw_pause_menu(
+                    self.screen, self.fonts, self.pause_hovered, self.L
+                )
+                self.lang_rects = draw_lang_picker(
+                    self.screen, self.fonts, self.flags, self.locales,
+                    strings.CURRENT_LOCALE, self.lang_open, self.lang_hovered, self.L,
+                )
+            else:
+                draw_selfplay_training_screen(self.screen, self.fonts, self.sp, self.L)
+        elif chess and chess.game_over:
             ml_data = None
             if self.mode in (MODE_ML_AI, MODE_ML_SELF):
                 ml_data = get_stats()
@@ -1056,9 +1157,7 @@ class GameApp:
                 self.screen, self.fonts, chess.status_msg, self.over_hovered, self.L,
                 ml_stats=ml_data,
                 training_progress=(
-                    self.training.progress
-                    if self.mode in (MODE_ML_AI, MODE_ML_SELF)
-                    else None
+                    self.training.progress if self.mode == MODE_ML_AI else None
                 ),
                 training_done=not self.training.active,
                 self_play=self.mode == MODE_ML_SELF,

@@ -5,6 +5,7 @@ Grouping state into named objects replaces the ~60 nonlocal variables that
 lived in the original monolithic main() function.
 """
 
+from collections import deque
 from dataclasses import dataclass, field
 
 
@@ -72,6 +73,38 @@ class SavePopupState:
     error: bool = False
     hovered: str | None = None
     rects: dict = field(default_factory=dict)
+
+
+@dataclass
+class SelfPlayState:
+    """State for the ML vs ML MCTS self-play mode.
+
+    replay_buffer items: (board_tensor, policy_dict, turn_color, result)
+    mcts_result is written by the background MCTS thread:
+      [policy_dict, move, board_tensor]  (None until the thread finishes)
+    loss_result is written by the batch-training thread:
+      [total_loss, policy_loss, value_loss]
+    """
+
+    replay_buffer: object = field(
+        default_factory=lambda: deque(maxlen=50_000)
+    )
+    games_done: int = 0
+    white_wins: int = 0
+    black_wins: int = 0
+    draws: int = 0
+    game_lengths: list = field(default_factory=list)
+    losses: list = field(default_factory=list)       # total_loss per completed game
+    current_positions: list = field(default_factory=list)
+
+    # Background training
+    training_active: bool = False
+    training_thread: object = None                   # threading.Thread | None
+    loss_result: list = field(default_factory=lambda: [0.0, 0.0, 0.0])
+    progress: list = field(default_factory=lambda: [0, 0])
+
+    # Background MCTS thread communication
+    mcts_result: list = field(default_factory=lambda: [None, None, None])
 
 
 @dataclass

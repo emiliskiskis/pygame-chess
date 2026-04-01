@@ -15,6 +15,7 @@ Manages a single global ChessResNet model, providing:
   - clear_game_history()    : reset recorded positions for a new game
 """
 
+import random
 import threading
 
 import torch
@@ -326,6 +327,118 @@ def _train_on_positions(positions: list, result: float, progress: list) -> None:
     _model.eval()
     # Save model (including already-updated ELO/stats from record_game_result)
     _save_model()
+
+
+def ml_ai_mcts_move_for(
+    board,
+    color,
+    last_move,
+    castling_rights,
+    num_simulations: int = 50,
+    c_puct: float = 1.5,
+    temperature: float = 1.0,
+):
+    """Run MCTS for *color* and return (policy_dict, move, board_tensor).
+
+    policy_dict: {move_idx: normalised_visit_count}
+    move:        (fr, fc, tr, tc)
+    board_tensor: shape [18, 8, 8]
+
+    Returns (None, None, None) if no legal moves.
+    """
+    from .mcts import mcts_search
+
+    model = _ensure_model()
+    device = next(model.parameters()).device
+    return mcts_search(
+        model,
+        board,
+        color,
+        last_move,
+        castling_rights,
+        num_simulations,
+        c_puct=c_puct,
+        device=device,
+        temperature=temperature,
+    )
+
+
+def start_selfplay_batch_training_async(
+    replay_buffer,
+    batch_size: int,
+    progress: list,
+    loss_result: list,
+) -> threading.Thread:
+    """Sample a random batch from *replay_buffer* and train in a daemon thread.
+
+    replay_buffer items: (board_tensor, policy_dict, turn_color, result)
+    progress:    two-element list [steps_done, total_steps]  updated in-place
+    loss_result: three-element list [total, policy, value]   written on finish
+
+    Returns the Thread (already started).
+    """
+    _ensure_model()
+
+    n = len(replay_buffer)
+    if n < 32:
+        # Not enough data yet — complete immediately with zero loss
+        if progress is not None:
+            progress[0] = progress[1] = 1
+        if loss_result is not None:
+            loss_result[0] = loss_result[1] = loss_result[2] = 0.0
+        t = threading.Thread(target=lambda: None, daemon=True)
+        t.start()
+        return t
+
+    actual_batch = min(batch_size, n)
+    if progress is not None:
+        progress[0] = 0
+        progress[1] = actual_batch
+
+    batch = random.sample(list(replay_buffer), actual_batch)
+
+    def _train():
+        B = len(batch)
+        tensors = torch.stack([t for t, _, _, _ in batch])
+        policy_targets = torch.zeros(B, 4096)
+        for i, (_, pd, _, _) in enumerate(batch):
+            for idx, val in pd.items():
+                policy_targets[i, idx] = val
+        target_vals = torch.tensor(
+            [r if c == "white" else -r for _, _, c, r in batch],
+            dtype=torch.float32,
+        ).unsqueeze(1)
+
+        _model.train()
+        policy_logits, values = _model(tensors)
+
+        value_loss = nn.MSELoss()(values, target_vals)
+        winner_mask = target_vals.squeeze(1) > 0
+        if winner_mask.any():
+            log_probs = torch.log_softmax(policy_logits[winner_mask], dim=1)
+            policy_loss = -(policy_targets[winner_mask] * log_probs).sum(dim=1).mean()
+            total_loss = value_loss + policy_loss
+        else:
+            policy_loss = torch.tensor(0.0)
+            total_loss = value_loss
+
+        _optimizer.zero_grad()
+        total_loss.backward()
+        _optimizer.step()
+        _model.eval()
+
+        if loss_result is not None:
+            loss_result[0] = total_loss.item()
+            loss_result[1] = policy_loss.item()
+            loss_result[2] = value_loss.item()
+        if progress is not None:
+            progress[0] = progress[1]
+
+        _save_model()
+
+    t = threading.Thread(target=_train, daemon=True)
+    t.start()
+    return t
 
 
 def start_training_async(result: float, progress: list) -> threading.Thread:

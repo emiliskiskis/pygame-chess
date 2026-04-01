@@ -399,6 +399,115 @@ def draw_gameover_overlay(
     return rects
 
 
+# ── Self-play training screen ────────────────────────────────────────────────────
+
+
+def draw_selfplay_training_screen(screen, fonts, sp, L):
+    """Full-screen overlay shown between self-play games while a training batch runs.
+
+    Displays per-game stats and a live progress bar.  When training is done the
+    caller auto-restarts the next game; the screen disappears by itself.
+    """
+    ov = pygame.Surface((L.window_w, L.window_h), pygame.SRCALPHA)
+    ov.fill((0, 0, 0, 210))
+    screen.blit(ov, (0, 0))
+
+    cx = L.window_w // 2
+    sec = max(8, L.tile // 10)
+    bw = min(420, L.window_w - 80)
+    bar_h = max(12, L.tile // 6)
+
+    title_fh = fonts["over"].get_height()
+    stat_fh = fonts["status"].get_height()
+    sub_fh = fonts["sub"].get_height()
+
+    num_stat_rows = 4  # game #, loss row, W/D/B row, avg length row
+    total_h = (
+        title_fh + sec
+        + num_stat_rows * (stat_fh + 4) + sec
+        + sub_fh + 4 + bar_h
+    )
+    y = max(16, L.window_h // 2 - total_h // 2)
+
+    # ── Title ─────────────────────────────────────────────────────────────────
+    title_s = fonts["over"].render("\u265b  Self-Play Training  \u265b", True, (255, 220, 50))
+    screen.blit(title_s, title_s.get_rect(centerx=cx, top=y))
+    y += title_fh + sec
+
+    stat_col = (190, 190, 205)
+    sep = "   \u00b7   "
+
+    # ── Game number ───────────────────────────────────────────────────────────
+    game_s = fonts["status"].render(
+        f"Game #\u202f{sp.games_done}", True, (255, 220, 100)
+    )
+    screen.blit(game_s, game_s.get_rect(centerx=cx, top=y))
+    y += stat_fh + 4
+
+    # ── Loss / avg loss ───────────────────────────────────────────────────────
+    last_loss = sp.losses[-1] if sp.losses else None
+    avg_loss = (
+        sum(sp.losses[-10:]) / len(sp.losses[-10:]) if sp.losses else None
+    )
+    loss_str = (
+        f"Loss\u2009{last_loss:.4f}{sep}Avg (last\u200910)\u2009{avg_loss:.4f}"
+        if last_loss is not None
+        else "Loss\u2009\u2014\u2014\u2014"
+    )
+    loss_s = fonts["status"].render(loss_str, True, stat_col)
+    screen.blit(loss_s, loss_s.get_rect(centerx=cx, top=y))
+    y += stat_fh + 4
+
+    # ── Win / draw / black-win counts ─────────────────────────────────────────
+    total_games = max(sp.games_done, 1)
+    wdb_s = fonts["status"].render(
+        f"W\u2009{sp.white_wins}{sep}D\u2009{sp.draws}{sep}B\u2009{sp.black_wins}",
+        True,
+        stat_col,
+    )
+    screen.blit(wdb_s, wdb_s.get_rect(centerx=cx, top=y))
+    y += stat_fh + 4
+
+    # ── Average game length ───────────────────────────────────────────────────
+    avg_len = (
+        sum(sp.game_lengths) / len(sp.game_lengths) if sp.game_lengths else 0.0
+    )
+    len_s = fonts["status"].render(
+        f"Avg game length\u2009{avg_len:.1f} moves", True, stat_col
+    )
+    screen.blit(len_s, len_s.get_rect(centerx=cx, top=y))
+    y += stat_fh + sec
+
+    # ── Progress bar ──────────────────────────────────────────────────────────
+    done = not sp.training_active or (
+        sp.progress[1] > 0 and sp.progress[0] >= sp.progress[1]
+    )
+    label = "Training complete \u2014 starting next game\u2026" if done else "Training\u2026"
+    label_col = (100, 220, 120) if done else (100, 170, 255)
+    label_s = fonts["sub"].render(label, True, label_col)
+    screen.blit(label_s, label_s.get_rect(centerx=cx, top=y))
+    y += sub_fh + 4
+
+    bx = cx - bw // 2
+    bar_rect = pygame.Rect(bx, y, bw, bar_h)
+    pygame.draw.rect(screen, (45, 45, 65), bar_rect, border_radius=4)
+    frac = (
+        min(1.0, sp.progress[0] / sp.progress[1])
+        if sp.progress[1] > 0
+        else (1.0 if done else 0.0)
+    )
+    if frac > 0:
+        fill_w = max(bar_h, int(bw * frac))
+        fill = pygame.Rect(bx, y, fill_w, bar_h)
+        bar_color = (70, 210, 90) if done else (70, 130, 255)
+        pygame.draw.rect(screen, bar_color, fill, border_radius=4)
+    pygame.draw.rect(screen, (85, 85, 110), bar_rect, 1, border_radius=4)
+
+    # ── ESC hint ──────────────────────────────────────────────────────────────
+    hint_s = fonts["sub"].render("ESC \u2014 pause", True, (70, 70, 80))
+    screen.blit(hint_s, hint_s.get_rect(centerx=cx, top=y + bar_h + 8))
+
+
 # ── Language picker / selector ───────────────────────────────────────────────────
 
 
