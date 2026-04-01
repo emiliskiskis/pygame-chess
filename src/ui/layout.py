@@ -24,10 +24,10 @@ class Layout:
         self.border_side = max(20, tile // 2)
         self.border_top = max(50, tile + 5)
 
-        # Bottom border must fit the coordinate letters row and the notation bar
+        # Bottom border must fit the coordinate letters row and two info bars
         bar_h = max(24, tile // 3)
         letters_h = max(24, tile // 2)
-        self.border_bottom = letters_h + bar_h + 12
+        self.border_bottom = letters_h + bar_h * 2 + 16
 
         self.board_px = tile * 8
         self.board_w = self.board_px + self.border_side * 2
@@ -38,11 +38,17 @@ class Layout:
         # Coordinate letters sit in the upper portion of the bottom border
         self.coord_bottom_y = self.border_top + self.board_px + letters_h // 2
 
-        # Notation bar sits below the coordinate letters
+        # Notation / model-path bar (first line)
         self.bar_h = bar_h
-        self.bar_y = self.border_top + self.board_px + letters_h + (self.border_bottom - letters_h - bar_h) // 2
+        self.bar_y = self.border_top + self.board_px + letters_h + 4
         self.bar_x = self.border_side
         self.bar_w = self.board_px
+
+        # Stats bar (second line, only used in ML vs ML mode)
+        self.stats_bar_h = bar_h
+        self.stats_bar_y = self.bar_y + bar_h + 4
+        self.stats_bar_x = self.border_side
+        self.stats_bar_w = self.board_px
 
         # Font sizes scale with tile
         s = tile / DEFAULT_TILE

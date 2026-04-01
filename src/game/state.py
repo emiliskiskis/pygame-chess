@@ -5,6 +5,7 @@ Grouping state into named objects replaces the ~60 nonlocal variables that
 lived in the original monolithic main() function.
 """
 
+import time as _time
 from collections import deque
 from dataclasses import dataclass, field
 
@@ -105,6 +106,10 @@ class SelfPlayState:
 
     # Background MCTS thread communication
     mcts_result: list = field(default_factory=lambda: [None, None, None])
+
+    # Timing (seconds per game)
+    game_start_time: float = field(default_factory=_time.time)
+    avg_spg: float = 0.0   # updated each time a game completes
 
 
 @dataclass

@@ -81,7 +81,7 @@ def draw_notation_bar(screen, fonts, bar_text, bar_error, L):
 
 
 def draw_model_path(screen, fonts, path, L):
-    """Show the model file path in the notation-bar slot (used in ML vs ML mode)."""
+    """Show the model file path in the first bottom bar (ML vs ML mode)."""
     f = fonts["bar"]
     bx, by = L.bar_x, L.bar_y
     bw, bh = L.bar_w, L.bar_h
@@ -92,6 +92,55 @@ def draw_model_path(screen, fonts, path, L):
 
     path_s = f.render(path, True, (90, 90, 105))
     screen.blit(path_s, path_s.get_rect(midleft=(bx + pad, by + bh // 2)))
+
+
+def draw_selfplay_stats(screen, fonts, sp, L):
+    """Show live training stats in the second bottom bar (ML vs ML mode).
+
+    Mirrors the terminal line printed by train_selfplay.py:
+      Game #N · loss X.XXXX · avg X.XXXX · W:N D:N B:N · avg_len XX.X · X.Xs/game
+    """
+    import time as _time
+
+    f = fonts["bar"]
+    bx, by = L.stats_bar_x, L.stats_bar_y
+    bw, bh = L.stats_bar_w, L.stats_bar_h
+    pad = max(4, bh // 5)
+    sep = "  ·  "
+
+    pygame.draw.rect(screen, (18, 18, 25), (bx, by, bw, bh), border_radius=4)
+    pygame.draw.rect(screen, (45, 45, 60), (bx, by, bw, bh), 1, border_radius=4)
+
+    last_loss = sp.losses[-1] if sp.losses else None
+    avg_loss = sum(sp.losses[-10:]) / len(sp.losses[-10:]) if sp.losses else None
+    avg_len = sum(sp.game_lengths) / len(sp.game_lengths) if sp.game_lengths else 0.0
+
+    # Seconds into the current (in-progress) game
+    cur_spg = _time.time() - sp.game_start_time
+
+    parts = [f"Game\u202f#{sp.games_done + 1}"]
+
+    if last_loss is not None:
+        parts.append(f"loss\u202f{last_loss:.4f}")
+    if avg_loss is not None:
+        parts.append(f"avg\u202f{avg_loss:.4f}")
+
+    parts.append(f"W:{sp.white_wins}\u202fD:{sp.draws}\u202fB:{sp.black_wins}")
+
+    if sp.game_lengths:
+        parts.append(f"avg_len\u202f{avg_len:.1f}")
+
+    if sp.avg_spg > 0:
+        parts.append(f"{sp.avg_spg:.1f}s/game")
+    else:
+        parts.append(f"{cur_spg:.0f}s")
+
+    buf_size = len(sp.replay_buffer)
+    parts.append(f"buf\u202f{buf_size}")
+
+    line = sep.join(parts)
+    text_s = f.render(line, True, (140, 155, 140))
+    screen.blit(text_s, text_s.get_rect(midleft=(bx + pad, by + bh // 2)))
 
 
 def draw_move_panel(screen, fonts, move_history, L):

@@ -7,6 +7,7 @@ typed dataclass instances rather than 60-odd nonlocal variables.
 
 import sys
 import threading
+import time
 
 import pygame
 
@@ -70,6 +71,7 @@ from ..ui.hud_renderer import (
     draw_move_panel,
     draw_notation_bar,
     draw_self_play_speed,
+    draw_selfplay_stats,
     draw_status,
     draw_tip,
 )
@@ -211,6 +213,7 @@ class GameApp:
                 # Restart within the mode: preserve replay buffer and stats
                 self.sp.current_positions = []
                 self.sp.mcts_result = [None, None, None]
+                self.sp.game_start_time = time.time()
 
     def _apply_new_size(self, w, h):
         self.L = Layout(w, h)
@@ -280,6 +283,12 @@ class GameApp:
                 for tensor, pd, turn_color in self.sp.current_positions:
                     self.sp.replay_buffer.append((tensor, pd, turn_color, ml_result))
                 self.sp.current_positions = []
+                # Update timing
+                elapsed = time.time() - self.sp.game_start_time
+                self.sp.avg_spg = (
+                    (self.sp.avg_spg * self.sp.games_done + elapsed)
+                    / (self.sp.games_done + 1)
+                )
                 # Update cumulative stats
                 self.sp.games_done += 1
                 if ml_result > 0:
@@ -1139,6 +1148,8 @@ class GameApp:
             draw_tip(self.screen, self.fonts, chess.tip_text, self.L)
         elif self.mode == MODE_ML_SELF:
             draw_model_path(self.screen, self.fonts, get_model_path_str(), self.L)
+            if self.sp is not None:
+                draw_selfplay_stats(self.screen, self.fonts, self.sp, self.L)
         else:
             draw_notation_bar(self.screen, self.fonts, self.bar_text, self.bar_error, self.L)
 
