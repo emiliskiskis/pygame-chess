@@ -64,6 +64,7 @@ class Dashboard:
         self.draws = 0
         self.game_lengths = []
         self.losses = []
+        self.avg_spg = 0.0  # seconds per game, updated only when a game completes
         self.writer = SummaryWriter(log_dir=log_dir)
         print(f"  TensorBoard logs → {log_dir}")
         print(f"  Run: tensorboard --logdir {os.path.dirname(log_dir)}\n")
@@ -109,9 +110,13 @@ class Dashboard:
 
         # ── Terminal line ─────────────────────────────────────────────────────
         elapsed = time.time() - self.start_time
-        spg = elapsed / self.games_done
+        self.avg_spg = elapsed / self.games_done
         pct = self.games_done / self.total_games
         avg_len = sum(self.game_lengths) / self.games_done
+        eta_secs = (self.total_games - self.games_done) * self.avg_spg
+        eta_h = int(eta_secs // 3600)
+        eta_m = int(eta_secs % 3600 // 60)
+        eta_s = int(eta_secs % 60)
         print(
             f"\r  [{self.games_done:>{len(str(self.total_games))}}/{self.total_games}]"
             f"  {pct:5.1%}"
@@ -119,15 +124,24 @@ class Dashboard:
             f"  len={length:>3}"
             f"  avg_len={avg_len:5.1f}"
             f"  result={result_str:<5}"
-            f"  {spg:.1f}s/game" + " " * 10,  # overwrite leftover MCTS status chars
+            f"  {self.avg_spg:.1f}s/game"
+            f"  ETA {eta_h:02d}:{eta_m:02d}:{eta_s:02d}" + " " * 4,
             flush=True,
         )
 
     def set_current(self, move_num, turn, sim=None):
         """Overwrite the current terminal line with live MCTS progress."""
+        if self.avg_spg > 0:
+            eta_secs = (self.total_games - self.games_done) * self.avg_spg
+            eta_h = int(eta_secs // 3600)
+            eta_m = int(eta_secs % 3600 // 60)
+            eta_s = int(eta_secs % 60)
+            eta_str = f"  ETA {eta_h:02d}:{eta_m:02d}:{eta_s:02d}"
+        else:
+            eta_str = ""
         print(
             f"\r  [{self.games_done:>{len(str(self.total_games))}}/{self.total_games}]"
-            f"  move {move_num:>3} ({turn:<5})",
+            f"  move {move_num:>3} ({turn:<5}){eta_str}",
             end="",
             flush=True,
         )
