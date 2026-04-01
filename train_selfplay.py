@@ -125,14 +125,9 @@ class Dashboard:
 
     def set_current(self, move_num, turn, sim=None):
         """Overwrite the current terminal line with live MCTS progress."""
-        sim_str = (
-            f"  sim {sim:>{len(str(self.num_simulations))}}/{self.num_simulations}"
-            if sim
-            else ""
-        )
         print(
             f"\r  [{self.games_done:>{len(str(self.total_games))}}/{self.total_games}]"
-            f"  move {move_num:>3} ({turn:<5}){sim_str}",
+            f"  move {move_num:>3} ({turn:<5})",
             end="",
             flush=True,
         )
