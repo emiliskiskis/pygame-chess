@@ -43,6 +43,8 @@ from src.engine.ml_model import ChessResNet, board_to_tensor, move_to_index
 MODEL_DIR = os.path.join(os.path.dirname(__file__), "models")
 MODEL_PATH = os.path.join(MODEL_DIR, "model.pt")
 
+# torch.cuda.is_available() returns True for both NVIDIA (CUDA) and AMD (ROCm)
+# because PyTorch's ROCm builds expose the same torch.cuda API via HIP.
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
@@ -359,9 +361,9 @@ def train_on_batch(model, optimizer, replay_buffer, batch_size):
     batch = random.sample(list(replay_buffer), actual_batch)
     B = len(batch)
 
-    tensors = torch.stack([t for t, _, _, _ in batch])  # (B, 18, 8, 8)
+    tensors = torch.stack([t for t, _, _, _ in batch]).to(DEVICE)  # (B, 18, 8, 8)
 
-    policy_targets = torch.zeros(B, 4096)
+    policy_targets = torch.zeros(B, 4096, device=DEVICE)
     for i, (_, pd, _, _) in enumerate(batch):
         for idx, val in pd.items():
             policy_targets[i, idx] = val
@@ -369,6 +371,7 @@ def train_on_batch(model, optimizer, replay_buffer, batch_size):
     target_vals = torch.tensor(
         [r if c == "white" else -r for _, _, c, r in batch],
         dtype=torch.float32,
+        device=DEVICE,
     ).unsqueeze(1)  # (B, 1)
 
     model.train()
@@ -382,7 +385,7 @@ def train_on_batch(model, optimizer, replay_buffer, batch_size):
         policy_loss = -(policy_targets[winner_mask] * log_probs).sum(dim=1).mean()
         total_loss = value_loss + policy_loss
     else:
-        policy_loss = torch.tensor(0.0)
+        policy_loss = torch.tensor(0.0, device=DEVICE)
         total_loss = value_loss
 
     optimizer.zero_grad()
@@ -482,6 +485,7 @@ def main():
 
     print("\n\033[1;33m  ♚  Chess ML Self-Play Training  ♚\033[0m\n")
     model, optimizer = load_or_create_model()
+    print(f"  Device:      {DEVICE}{' (' + torch.cuda.get_device_name(0) + ')' if DEVICE.type == 'cuda' else ''}")
     print(f"  Games:       {args.games}")
     print(f"  Simulations: {args.simulations} per move  (MCTS)")
     print(f"  Max moves:   {args.max_moves}")
