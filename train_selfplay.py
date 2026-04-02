@@ -68,7 +68,7 @@ class Dashboard:
         print(f"  Run: tensorboard --logdir {os.path.dirname(log_dir)}\n")
 
     def update_game(
-        self, result, length, total_loss, policy_loss, value_loss, buffer_size
+        self, result, length, total_loss, policy_loss, value_loss, buffer_size, lr=None
     ):
         self.games_done += 1
         self.game_lengths.append(length)
@@ -105,6 +105,8 @@ class Dashboard:
         w.add_scalar(
             "train/loss_avg10", sum(self.losses[-10:]) / len(self.losses[-10:]), step
         )
+        if lr is not None:
+            w.add_scalar("train/lr", lr, step)
 
         # ── Terminal line ─────────────────────────────────────────────────────
         elapsed = time.time() - self.start_time
@@ -154,7 +156,7 @@ class Dashboard:
 # ── Self-play ────────────────────────────────────────────────────────────────
 
 
-def play_one_game(model, max_moves, temperature, num_simulations, c_puct, dashboard):
+def play_one_game(model, max_moves, temperature, num_simulations, c_puct, dashboard, games_completed=0):
     """Play a single MCTS-guided self-play game.
 
     Returns (positions, result, move_count) where each position is
@@ -186,6 +188,13 @@ def play_one_game(model, max_moves, temperature, num_simulations, c_puct, dashbo
 
         dashboard.set_current(move_num + 1, turn)
 
+        # Anneal temperature: stay high for early training; drop after move 30
+        # once the model has seen enough games to have meaningful priors.
+        if games_completed < 200 or move_num < 30:
+            effective_temp = temperature
+        else:
+            effective_temp = max(0.1, temperature * 0.1)
+
         policy_dict, chosen_move, board_tensor = mcts_search(
             model,
             board,
@@ -195,7 +204,7 @@ def play_one_game(model, max_moves, temperature, num_simulations, c_puct, dashbo
             num_simulations,
             c_puct=c_puct,
             device=DEVICE,
-            temperature=temperature,
+            temperature=effective_temp,
         )
 
         if chosen_move is None:
@@ -245,24 +254,13 @@ def train_on_batch(model, optimizer, replay_buffer, batch_size):
 
     value_loss = nn.MSELoss()(values, target_vals)
 
-    # Policy loss: full weight on winning positions, reduced weight on draws,
-    # zero on losing positions (don't reinforce bad moves).
-    tv = target_vals.squeeze(1)
-    winner_mask = tv > 0
-    draw_mask = tv == 0
-    policy_terms = []
-    if winner_mask.any():
-        lp = torch.log_softmax(policy_logits[winner_mask], dim=1)
-        policy_terms.append(-(policy_targets[winner_mask] * lp).sum(dim=1).mean())
-    if draw_mask.any():
-        lp = torch.log_softmax(policy_logits[draw_mask], dim=1)
-        policy_terms.append(0.3 * -(policy_targets[draw_mask] * lp).sum(dim=1).mean())
-    if policy_terms:
-        policy_loss = sum(policy_terms) / len(policy_terms)
-        total_loss = value_loss + policy_loss
-    else:
-        policy_loss = torch.tensor(0.0, device=DEVICE)
-        total_loss = value_loss
+    # Policy loss: soft cross-entropy against MCTS visit distribution.
+    # All positions (wins, draws, losses) contribute equally — the value head
+    # already learns to discount bad positions; the policy head should still
+    # learn which moves MCTS preferred regardless of the game outcome.
+    lp = torch.log_softmax(policy_logits, dim=1)
+    policy_loss = -(policy_targets * lp).sum(dim=1).mean()
+    total_loss = value_loss + policy_loss
 
     optimizer.zero_grad()
     total_loss.backward()
@@ -275,12 +273,16 @@ def train_on_batch(model, optimizer, replay_buffer, batch_size):
 def load_or_create_model(model_path):
     model = ChessResNet()
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-4, weight_decay=1e-4)
+    # Halve the learning rate every 500 games to stabilise late training.
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=500, gamma=0.5)
     games_completed = 0
 
     if os.path.exists(model_path):
         checkpoint = torch.load(model_path, map_location="cpu", weights_only=False)
         model.load_state_dict(checkpoint["model"])
         optimizer.load_state_dict(checkpoint["optimizer"])
+        if "scheduler" in checkpoint:
+            scheduler.load_state_dict(checkpoint["scheduler"])
         games_completed = checkpoint.get("games_completed", 0)
         print(f"  Loaded existing model from {model_path}")
         if games_completed:
@@ -290,15 +292,16 @@ def load_or_create_model(model_path):
 
     model.to(DEVICE)
     model.eval()
-    return model, optimizer, games_completed
+    return model, optimizer, scheduler, games_completed
 
 
-def save_model(model, optimizer, games_completed, model_path):
+def save_model(model, optimizer, scheduler, games_completed, model_path):
     os.makedirs(os.path.dirname(os.path.abspath(model_path)), exist_ok=True)
     torch.save(
         {
             "model": model.state_dict(),
             "optimizer": optimizer.state_dict(),
+            "scheduler": scheduler.state_dict(),
             "games_completed": games_completed,
         },
         model_path,
@@ -348,9 +351,15 @@ def main():
     parser.add_argument(
         "--simulations",
         type=int,
-        default=50,
-        help="MCTS simulations per move (default: 50). "
-        "More = stronger data, slower games. Try 200+ for best quality.",
+        default=400,
+        help="MCTS simulations per move (default: 400). "
+        "More = stronger data, slower games.",
+    )
+    parser.add_argument(
+        "--train-steps",
+        type=int,
+        default=10,
+        help="Training batches per game (default: 10).",
     )
     parser.add_argument(
         "--c-puct",
@@ -371,7 +380,7 @@ def main():
     log_dir = args.log_dir or os.path.join("runs", run_name)
 
     print("\n\033[1;33m  ♚  Chess ML Self-Play Training  ♚\033[0m\n")
-    model, optimizer, games_completed = load_or_create_model(model_path)
+    model, optimizer, scheduler, games_completed = load_or_create_model(model_path)
     print(f"  Model:       {model_path}")
     print(f"  Device:      {DEVICE}{' (' + torch.cuda.get_device_name(0) + ')' if DEVICE.type == 'cuda' else ''}")
     print(f"  Simulations: {args.simulations} per move  (MCTS)")
@@ -395,25 +404,30 @@ def main():
                 args.simulations,
                 args.c_puct,
                 dashboard,
+                games_completed=game_num,
             )
 
             for tensor, policy_dict, turn_color in positions:
                 replay_buffer.append((tensor, policy_dict, turn_color, result))
 
+            for _ in range(args.train_steps - 1):
+                train_on_batch(model, optimizer, replay_buffer, args.batch_size)
             total_loss, policy_loss, value_loss = train_on_batch(
                 model, optimizer, replay_buffer, args.batch_size
             )
             dashboard.update_game(
-                result, length, total_loss, policy_loss, value_loss, len(replay_buffer)
+                result, length, total_loss, policy_loss, value_loss, len(replay_buffer),
+                lr=scheduler.get_last_lr()[0],
             )
 
             game_num += 1
+            scheduler.step()
             if game_num % args.save_every == 0:
-                save_model(model, optimizer, game_num, model_path)
+                save_model(model, optimizer, scheduler, game_num, model_path)
 
     except KeyboardInterrupt:
         print("\n\n  Interrupted — saving model...")
-        save_model(model, optimizer, dashboard.games_done, model_path)
+        save_model(model, optimizer, scheduler, dashboard.games_done, model_path)
         print(f"  Saved at game {dashboard.games_done}.")
         print(f"  Resume with: python train_selfplay.py --path \"{model_path}\"\n")
     finally:
