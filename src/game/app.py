@@ -269,7 +269,10 @@ class GameApp:
             if self.mode in (MODE_ML_AI, MODE_ML_SELF):
                 if S.STATUS_CHECKMATE.split("{")[0] in chess.status_msg:
                     winner = opponent(chess.turn)
-                    ml_result = 1.0 if winner == "white" else -1.0
+                    base = 1.0 if winner == "white" else -1.0
+                    # Reward finishing faster: scale from 1.0 (move 0) down to 0.5 (move 200).
+                    brevity = 1.0 - 0.5 * (len(chess.move_history) / 200)
+                    ml_result = base * brevity
                 else:
                     ml_result = 0.0
             if self.mode == MODE_ML_AI:

@@ -3,8 +3,8 @@
 train_selfplay.py — Self-play training for the chess ML model.
 
 Usage:
-    python train_selfplay.py --games 1000
-    python train_selfplay.py --games 5000 --save-every 100 --max-moves 300
+    python train_selfplay.py
+    python train_selfplay.py --path models/my_model.pt
     python train_selfplay.py --simulations 50  # MCTS simulations per move (default: 50)
 
 View training progress:
@@ -40,8 +40,7 @@ from src.engine.board import (
 from src.engine.mcts import MCTSNode, mcts_search
 from src.engine.ml_model import ChessResNet
 
-MODEL_DIR = os.path.join(os.path.dirname(__file__), "models")
-MODEL_PATH = os.path.join(MODEL_DIR, "model.pt")
+_DEFAULT_MODEL_PATH = os.path.join(os.path.dirname(__file__), "models", "model.pt")
 
 # torch.cuda.is_available() returns True for both NVIDIA (CUDA) and AMD (ROCm)
 # because PyTorch's ROCm builds expose the same torch.cuda API via HIP.
@@ -54,8 +53,7 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 class Dashboard:
     """Logs training metrics to TensorBoard; prints a minimal status line."""
 
-    def __init__(self, total_games, num_simulations, log_dir, games_completed=0):
-        self.total_games = total_games
+    def __init__(self, num_simulations, log_dir, games_completed=0):
         self.num_simulations = num_simulations
         self.start_time = time.time()
         self.games_done = games_completed  # offset so step numbers continue from checkpoint
@@ -111,37 +109,23 @@ class Dashboard:
         # ── Terminal line ─────────────────────────────────────────────────────
         elapsed = time.time() - self.start_time
         self.avg_spg = elapsed / self.games_done
-        pct = self.games_done / self.total_games
         avg_len = sum(self.game_lengths) / self.games_done
-        eta_secs = (self.total_games - self.games_done) * self.avg_spg
-        eta_h = int(eta_secs // 3600)
-        eta_m = int(eta_secs % 3600 // 60)
-        eta_s = int(eta_secs % 60)
         print(
-            f"\r  [{self.games_done:>{len(str(self.total_games))}}/{self.total_games}]"
-            f"  {pct:5.1%}"
+            f"\r  [game {self.games_done}]"
             f"  loss={total_loss:.4f}"
             f"  len={length:>3}"
             f"  avg_len={avg_len:5.1f}"
             f"  result={result_str:<5}"
-            f"  {self.avg_spg:.1f}s/game"
-            f"  ETA {eta_h:02d}:{eta_m:02d}:{eta_s:02d}" + " " * 4,
+            f"  {self.avg_spg:.1f}s/game" + " " * 4,
             flush=True,
         )
 
     def set_current(self, move_num, turn):
         """Overwrite the current terminal line with live move progress."""
-        if self.avg_spg > 0:
-            eta_secs = (self.total_games - self.games_done) * self.avg_spg
-            eta_h = int(eta_secs // 3600)
-            eta_m = int(eta_secs % 3600 // 60)
-            eta_s = int(eta_secs % 60)
-            eta_str = f"  ETA {eta_h:02d}:{eta_m:02d}:{eta_s:02d}"
-        else:
-            eta_str = ""
+        spg_str = f"  {self.avg_spg:.1f}s/game" if self.avg_spg > 0 else ""
         print(
-            f"\r  [{self.games_done:>{len(str(self.total_games))}}/{self.total_games}]"
-            f"  move {move_num:>3} ({turn:<5}){eta_str}",
+            f"\r  [game {self.games_done + 1}]"
+            f"  move {move_num:>3} ({turn:<5}){spg_str}",
             end="",
             flush=True,
         )
@@ -149,14 +133,14 @@ class Dashboard:
     def close(self):
         self.writer.close()
 
-    def final_summary(self):
+    def final_summary(self, model_path):
         elapsed = time.time() - self.start_time
         h, m, s = int(elapsed // 3600), int(elapsed % 3600 // 60), int(elapsed % 60)
         avg_len = sum(self.game_lengths) / max(len(self.game_lengths), 1)
         avg_loss = sum(self.losses) / max(len(self.losses), 1)
 
         print("\n")
-        print("  ══════════ Training Complete ══════════")
+        print("  ══════════ Training Stopped ══════════")
         print(f"  Games played:   {self.games_done}")
         print(f"  Total time:     {h:02d}:{m:02d}:{s:02d}")
         print(f"  White wins:     {self.white_wins}")
@@ -164,7 +148,7 @@ class Dashboard:
         print(f"  Draws:          {self.draws}")
         print(f"  Avg game len:   {avg_len:.1f} moves")
         print(f"  Avg loss:       {avg_loss:.4f}")
-        print(f"\n  Model saved to: {MODEL_PATH}")
+        print(f"\n  Model saved to: {model_path}")
 
 
 # ── Self-play ────────────────────────────────────────────────────────────────
@@ -192,7 +176,10 @@ def play_one_game(model, max_moves, temperature, num_simulations, c_puct, dashbo
         if not moves:
             if is_in_check(board, turn):
                 winner = opponent(turn)
-                result = 1.0 if winner == "white" else -1.0
+                base = 1.0 if winner == "white" else -1.0
+                # Reward finishing faster: scale from 1.0 (move 0) down to 0.5 (move max_moves).
+                brevity = 1.0 - 0.5 * (move_num / max_moves)
+                result = base * brevity
             else:
                 result = 0.0
             return positions, result, move_num
@@ -285,36 +272,36 @@ def train_on_batch(model, optimizer, replay_buffer, batch_size):
     return total_loss.item(), policy_loss.item(), value_loss.item()
 
 
-def load_or_create_model():
+def load_or_create_model(model_path):
     model = ChessResNet()
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-4, weight_decay=1e-4)
     games_completed = 0
 
-    if os.path.exists(MODEL_PATH):
-        checkpoint = torch.load(MODEL_PATH, map_location="cpu", weights_only=False)
+    if os.path.exists(model_path):
+        checkpoint = torch.load(model_path, map_location="cpu", weights_only=False)
         model.load_state_dict(checkpoint["model"])
         optimizer.load_state_dict(checkpoint["optimizer"])
         games_completed = checkpoint.get("games_completed", 0)
-        print(f"  Loaded existing model from {MODEL_PATH}")
+        print(f"  Loaded existing model from {model_path}")
         if games_completed:
             print(f"  Resuming from game {games_completed}")
     else:
-        print("  Starting with a fresh model")
+        print(f"  No model found at {model_path} — starting fresh")
 
     model.to(DEVICE)
     model.eval()
     return model, optimizer, games_completed
 
 
-def save_model(model, optimizer, games_completed):
-    os.makedirs(MODEL_DIR, exist_ok=True)
+def save_model(model, optimizer, games_completed, model_path):
+    os.makedirs(os.path.dirname(os.path.abspath(model_path)), exist_ok=True)
     torch.save(
         {
             "model": model.state_dict(),
             "optimizer": optimizer.state_dict(),
             "games_completed": games_completed,
         },
-        MODEL_PATH,
+        model_path,
     )
 
 
@@ -322,12 +309,14 @@ def save_model(model, optimizer, games_completed):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Chess ML self-play training")
+    parser = argparse.ArgumentParser(
+        description="Chess ML self-play training (runs indefinitely; Ctrl-C to stop)"
+    )
     parser.add_argument(
-        "--games",
-        type=int,
-        default=1000,
-        help="Number of games to play (default: 1000)",
+        "--path",
+        type=str,
+        default=_DEFAULT_MODEL_PATH,
+        help="Path to model checkpoint (default: models/model.pt)",
     )
     parser.add_argument(
         "--save-every",
@@ -377,32 +366,28 @@ def main():
     )
     args = parser.parse_args()
 
+    model_path = os.path.abspath(args.path)
     run_name = time.strftime("%Y%m%d_%H%M%S")
     log_dir = args.log_dir or os.path.join("runs", run_name)
 
     print("\n\033[1;33m  ♚  Chess ML Self-Play Training  ♚\033[0m\n")
-    model, optimizer, games_completed = load_or_create_model()
+    model, optimizer, games_completed = load_or_create_model(model_path)
+    print(f"  Model:       {model_path}")
     print(f"  Device:      {DEVICE}{' (' + torch.cuda.get_device_name(0) + ')' if DEVICE.type == 'cuda' else ''}")
-    print(f"  Games:       {args.games}")
     print(f"  Simulations: {args.simulations} per move  (MCTS)")
     print(f"  Max moves:   {args.max_moves}")
     print(f"  Temperature: {args.temperature}")
     print(f"  Buffer size: {args.buffer_size}")
     print(f"  Batch size:  {args.batch_size}")
     print(f"  c_puct:      {args.c_puct}")
-    print()
-
-    if games_completed >= args.games:
-        print(f"  Already completed {games_completed}/{args.games} games. Nothing to do.")
-        print(f"  Pass a larger --games value to continue training.\n")
-        return
+    print(f"  Ctrl-C to stop and save.\n")
 
     replay_buffer = deque(maxlen=args.buffer_size)
-    dashboard = Dashboard(args.games, args.simulations, log_dir, games_completed)
+    dashboard = Dashboard(args.simulations, log_dir, games_completed)
 
-    interrupted = False
+    game_num = games_completed
     try:
-        for game_num in range(games_completed, args.games):
+        while True:
             positions, result, length = play_one_game(
                 model,
                 args.max_moves,
@@ -422,22 +407,19 @@ def main():
                 result, length, total_loss, policy_loss, value_loss, len(replay_buffer)
             )
 
-            if (game_num + 1) % args.save_every == 0:
-                save_model(model, optimizer, game_num + 1)
+            game_num += 1
+            if game_num % args.save_every == 0:
+                save_model(model, optimizer, game_num, model_path)
 
     except KeyboardInterrupt:
-        interrupted = True
         print("\n\n  Interrupted — saving model...")
-        save_model(model, optimizer, dashboard.games_done)
-        print(f"  Saved at game {dashboard.games_done}/{args.games}.")
-        print(f"  Resume with: python train_selfplay.py --games {args.games}\n")
-    else:
-        save_model(model, optimizer, args.games)
+        save_model(model, optimizer, dashboard.games_done, model_path)
+        print(f"  Saved at game {dashboard.games_done}.")
+        print(f"  Resume with: python train_selfplay.py --path \"{model_path}\"\n")
     finally:
         dashboard.close()
 
-    if not interrupted:
-        dashboard.final_summary()
+    dashboard.final_summary(model_path)
 
 
 if __name__ == "__main__":
